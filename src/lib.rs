@@ -491,10 +491,15 @@ fn read_fields(reader: &mut impl std::io::Read, separator: char) -> Result<Recor
             }
             field.push(current_char);
         } else {
-            return Err("Error: Could not parse entry from reader".into());
+            if !field.is_empty() {
+                record.add(Field::new(field.clone()));
+                break;
+            } else {
+                return Err("Error: Could not parse entry from reader".into());
+            }
         }
     }
-    return Ok(record);
+    Ok(record)
 }
 
 /// A CSV Writer implementation. Write to files or standard output.
