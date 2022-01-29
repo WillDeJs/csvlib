@@ -295,7 +295,7 @@ pub struct Reader<R> {
 }
 
 impl<R: std::io::Read> Reader<R> {
-    pub fn entries(&mut self) -> Entries<R> {
+    pub fn entries(self) -> Entries<R> {
         Entries::new(self)
     }
 }
@@ -423,19 +423,19 @@ where
 ///  println!("{}", entry);
 ///  }
 /// ```
-pub struct Entries<'a, R>
+pub struct Entries<R>
 where
     R: std::io::Read,
 {
-    owner: &'a mut Reader<R>,
+    owner: Reader<R>,
 }
-impl<'a, R: std::io::Read> Entries<'a, R> {
-    fn new(owner: &'a mut Reader<R>) -> Self {
+impl<'a, R: std::io::Read> Entries<R> {
+    fn new(owner: Reader<R>) -> Self {
         Self { owner }
     }
 }
 
-impl<'a, R: std::io::Read> Iterator for Entries<'a, R> {
+impl<'a, R: std::io::Read> Iterator for Entries<R> {
     type Item = Record;
 
     fn next(&mut self) -> Option<Self::Item> {
