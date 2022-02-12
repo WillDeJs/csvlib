@@ -1,6 +1,6 @@
 A simple CSV Reader/Writer library created for personal projects. Written in rust. 
  # Example (Writer):
- ```
+ ``` rs
 fn main() { 
 
 // Write to file
@@ -21,7 +21,7 @@ writer
 }
 ```
  # Example (Reader):
- ```
+ ``` rs
 fn main() {
     // Read from files
     let file = std::fs::File::open("./TSLA.csv").unwrap();
