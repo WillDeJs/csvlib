@@ -9,15 +9,15 @@
 //! let mut writer = csvlib::Writer::from_writer(std::fs::File::create("./test.txt").unwrap());
 //!
 //! // Create custom records
-//! let header = csvlib::make_record!["Header1", "Header 2", "Header,3"];
-//! writer.write_record(header).unwrap();
+//! let header = csvlib::csv!["Header1", "Header 2", "Header,3"];
+//! writer.write_record(&header).unwrap();
 //! writer
-//!     .write_all_records(vec![
-//!         csvlib::make_record!["Header1", "Header 2", "Header,3"],
-//!         csvlib::make_record!["entry", "entry", "entry"],
-//!         csvlib::make_record!["entry", "entry", "entry"],
-//!         csvlib::make_record!["entry", "entry", "entry"],
-//!         csvlib::make_record!["entry", "entry", "entry"],
+//!     .write_all(&vec![
+//!         csvlib::csv!["Header1", "Header 2", "Header,3"],
+//!         csvlib::csv!["entry", "entry", "entry"],
+//!         csvlib::csv!["entry", "entry", "entry"],
+//!         csvlib::csv!["entry", "entry", "entry"],
+//!         csvlib::csv!["entry", "entry", "entry"],
 //!     ])
 //!     .unwrap();
 //! }
@@ -30,7 +30,7 @@
 //!     let file = std::fs::File::open("./TSLA.csv").unwrap();
 //!
 //!     // create custom records
-//!     let record = csvlib::make_record!["Intr,o", 34, "klk", "manito"];
+//!     let record = csvlib::csv!["Intr,o", 34, "klk", "manito"];
 //!
 //!     // Parse record fields
 //!     println!("Got: {}", record.get_casted::<u32>(1).unwrap());
@@ -217,7 +217,7 @@ impl Record {
     ///
     /// # Examples:
     /// ```
-    /// let record = csvlib::make_record!["This is a record", 25, 56.2];
+    /// let record = csvlib::csv!["This is a record", 25, 56.2];
     ///
     /// assert_eq!(record.get_casted::<String>(0).unwrap(), "This is a record".to_string());
     /// assert_eq!(record.get_casted::<u32>(1).unwrap(), 25);
@@ -505,6 +505,7 @@ fn read_fields(reader: &mut impl std::io::Read, separator: char) -> Result<Recor
 /// A CSV Writer implementation. Write to files or standard output.
 pub struct Writer<R> {
     writer: R,
+    delimiter: Option<char>
 }
 
 impl<R: std::io::Write + Sized> Writer<R> {
@@ -513,14 +514,26 @@ impl<R: std::io::Write + Sized> Writer<R> {
     /// # Arguments:
     /// `writer` std::io::Write implemetnation to write to
     pub fn from_writer(writer: R) -> Self {
-        Self { writer }
+        Self { writer, delimiter: None }
+    }
+
+    /// Set a delimiver for a writer
+    /// # Arguments:
+    /// `delim` delimiter for CSV records being written.
+    pub fn with_delimiter(mut self, delim : char) -> Self {
+        self.delimiter = Some(delim);
+        self
     }
 
     /// Writes a single CSV [`Record`]
     ///
     /// # Arguments:
     /// `record` CSV record to be written.
-    pub fn write_record(&mut self, record: Record) -> Result<()> {
+    pub fn write_record(&mut self, record: &Record) -> Result<()> {
+        let mut record = record.clone();
+        if let Some(delimiter ) = self.delimiter.as_ref() {
+            record.delim = *delimiter;
+        }
         write!(self.writer, "{}\n", record).map_err(|op| op.to_string().into())
     }
 
@@ -528,9 +541,9 @@ impl<R: std::io::Write + Sized> Writer<R> {
     ///
     /// # Arguments
     /// `records`  vector of records to be written.
-    pub fn write_all_records(&mut self, records: Vec<Record>) -> Result<()> {
+    pub fn write_all(&mut self, records: &Vec<Record>) -> Result<()> {
         for record in records {
-            self.write_record(record)?;
+            self.write_record(&record)?;
         }
         Ok(())
     }
@@ -542,12 +555,12 @@ impl<R: std::io::Write + Sized> Writer<R> {
 /// ```
 /// # #[macro_use]
 /// # fn main() {
-/// let header = csvlib::make_record!["Header 1", "Header 2", "Header 3"];
-/// let entry1 = csvlib::make_record!["This is text", 1.2, 5];
+/// let header = csvlib::csv!["Header 1", "Header 2", "Header 3"];
+/// let entry1 = csvlib::csv!["This is text", 1.2, 5];
 /// # }
 /// ```
 #[macro_export]
-macro_rules! make_record {
+macro_rules! csv {
     ($($e:expr),*) => {
         {
             let mut record = $crate::Record::new();

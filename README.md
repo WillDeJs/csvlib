@@ -7,15 +7,15 @@ fn main() {
 let mut writer = csvlib::Writer::from_writer(std::fs::File::create("./test.txt").unwrap());
 
 // Create custom records
-let header = csvlib::make_record!["Header1", "Header 2", "Header,3"];
+let header = csvlib::csv!["Header1", "Header 2", "Header,3"];
 writer.write_record(header).unwrap();
 writer
-    .write_all_records(vec![
-        csvlib::make_record!["Header1", "Header 2", "Header,3"],
-        csvlib::make_record!["entry", "entry", "entry"],
-        csvlib::make_record!["entry", "entry", "entry"],
-        csvlib::make_record!["entry", "entry", "entry"],
-        csvlib::make_record!["entry", "entry", "entry"],
+    .write_all(vec![
+        csvlib::csv!["Header1", "Header 2", "Header,3"],
+        csvlib::csv!["entry", "entry", "entry"],
+        csvlib::csv!["entry", "entry", "entry"],
+        csvlib::csv!["entry", "entry", "entry"],
+        csvlib::csv!["entry", "entry", "entry"],
     ])
     .unwrap();
 }
@@ -26,7 +26,7 @@ fn main() {
     // Read from files
     let file = std::fs::File::open("./TSLA.csv").unwrap();
     // create custom records
-    let record = csvlib::make_record!["Intr,o", 34, "klk", "manito"];
+    let record = csvlib::csv!["Intr,o", 34, "klk", "manito"];
     // Parse record fields
     println!("Got: {}", record.get_casted::<u32>(1).unwrap());
     println!("{}", record);
