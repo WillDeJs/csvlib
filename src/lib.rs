@@ -38,7 +38,7 @@
 //!
 //!     // Iterate through records
 //!     let mut csv_reader = csvlib::Reader::builder()
-//!         .with_delim(',')
+//!         .with_delimiter(',')
 //!         .with_reader(file)
 //!         .with_header(true)
 //!         .build()
@@ -351,7 +351,7 @@ where
     /// # use csvlib::Reader;
     ///
     /// let mut csv_reader = csvlib::Reader::builder()
-    ///     .with_delim(',')
+    ///     .with_delimiter(',')
     ///     .with_reader(std::io::stdin())
     ///     .with_header(true)
     ///     .build()
@@ -383,7 +383,7 @@ where
     /// Build Reader with a custom delimiter. If not given, defaults to comma (',') as delimiter.
     /// # Arguments:
     /// `delim` character delimiter to be used.
-    pub fn with_delim(mut self, delim: char) -> Self {
+    pub fn with_delimiter(mut self, delim: char) -> Self {
         self.delimeter = Some(delim);
         self
     }
@@ -413,7 +413,7 @@ where
 /// ```no_run
 ///  let file = std::fs::File::open("./TSLA.csv").unwrap();
 ///  let mut csv_reader = csvlib::Reader::builder()
-///        .with_delim(',')
+///        .with_delimiter(',')
 ///        .with_reader(file)
 ///        .with_header(true)
 ///        .build()

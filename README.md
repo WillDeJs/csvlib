@@ -32,7 +32,7 @@ fn main() {
     println!("{}", record);
     // Iterate through records
     let mut csv_reader = csvlib::Reader::builder()
-        .with_delim(',')
+        .with_delimiter(',')
         .with_reader(file)
         .with_header(true)
         .build()
