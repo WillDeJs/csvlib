@@ -8,7 +8,7 @@ let mut writer = csvlib::Writer::from_writer(std::fs::File::create("./test.txt")
 
 // Create custom records
 let header = csvlib::csv!["Header1", "Header 2", "Header,3"];
-writer.write_record(header).unwrap();
+writer.write(header).unwrap();
 writer
     .write_all(vec![
         csvlib::csv!["Header1", "Header 2", "Header,3"],

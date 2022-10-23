@@ -10,7 +10,7 @@
 //!
 //! // Create custom records
 //! let header = csvlib::csv!["Header1", "Header 2", "Header,3"];
-//! writer.write_record(&header).unwrap();
+//! writer.write(&header).unwrap();
 //! writer
 //!     .write_all(&vec![
 //!         csvlib::csv!["Header1", "Header 2", "Header,3"],
@@ -529,7 +529,7 @@ impl<R: std::io::Write + Sized> Writer<R> {
     ///
     /// # Arguments:
     /// `record` CSV record to be written.
-    pub fn write_record(&mut self, record: &Record) -> Result<()> {
+    pub fn write(&mut self, record: &Record) -> Result<()> {
         let mut record = record.clone();
         if let Some(delimiter ) = self.delimiter.as_ref() {
             record.delim = *delimiter;
@@ -543,7 +543,7 @@ impl<R: std::io::Write + Sized> Writer<R> {
     /// `records`  vector of records to be written.
     pub fn write_all(&mut self, records: &Vec<Record>) -> Result<()> {
         for record in records {
-            self.write_record(&record)?;
+            self.write(&record)?;
         }
         Ok(())
     }
