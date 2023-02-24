@@ -541,7 +541,7 @@ impl<R: std::io::Write + Sized> Writer<R> {
     ///
     /// # Arguments
     /// `records`  vector of records to be written.
-    pub fn write_all(&mut self, records: &Vec<Record>) -> Result<()> {
+    pub fn write_all(&mut self, records: &[Record]) -> Result<()> {
         for record in records {
             self.write(&record)?;
         }
