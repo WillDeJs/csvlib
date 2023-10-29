@@ -3,7 +3,7 @@
 //!
 //! # Example (Writer):
 //! ```no_run
-//! fn main() {
+//!
 //!
 //! // Write to file
 //! let mut writer = csvlib::Writer::from_writer(std::fs::File::create("./test.txt").unwrap());
@@ -20,12 +20,10 @@
 //!         csvlib::csv!["entry", "entry", "entry"],
 //!     ])
 //!     .unwrap();
-//! }
+//!
 //!```
 //! # Example (Reader):
 //! ```no_run
-//! fn main() {
-//!
 //!     // Read from files
 //!     let file = std::fs::File::open("./TSLA.csv").unwrap();
 //!
@@ -33,7 +31,7 @@
 //!     let record = csvlib::csv!["Intr,o", 34, "klk", "manito"];
 //!
 //!     // Parse record fields
-//!     println!("Got: {}", record.get_casted::<u32>(1).unwrap());
+//!     println!("Got: {}", record.get::<u32>(1).unwrap());
 //!     println!("{}", record);
 //!
 //!     // Iterate through records
@@ -43,39 +41,61 @@
 //!         .with_header(true)
 //!         .build()
 //!         .unwrap();
-//!     println!("{}", csv_reader.header().unwrap());
+//!     println!("{}", csv_reader.headers().unwrap());
 //!     for entry in csv_reader.entries() {
 //!         println!("{}", entry);
 //!     }
-//! }
+//!
 //! ```
 
 pub use std::ops::Index;
 use std::{
     any::type_name,
-    fmt::{self, Debug},
+    error::Error,
+    fmt::{self, Debug, Display},
+    io::BufReader,
 };
 
-const CR: u8 = '\r' as u8;
-const LF: u8 = '\n' as u8;
-const QUOTE: u8 = '"' as u8;
-const DEFAULT_DELIM: char = ',' as char;
+const CR: u8 = b'\r';
+const LF: u8 = b'\n';
+const QUOTE: u8 = b'"';
+const DEFAULT_DELIM: char = ',';
 
 #[doc(hidden)]
 /// Generic Error type for internal use.
-pub type Result<T> = std::result::Result<T, std::boxed::Box<dyn std::error::Error>>;
+pub type Result<T> = std::result::Result<T, CsvError<'static>>;
 
+#[derive(Debug)]
+pub enum CsvError<'a> {
+    RecordError,
+    ReadError,
+    ConversionError(usize, &'a str),
+    InvalidString,
+    NotAField(usize),
+}
+
+impl Display for CsvError<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CsvError::RecordError => write!(f, "Error reading CSV record"),
+            CsvError::ReadError => write!(f, "Error reading from source."),
+            CsvError::ConversionError(index, type_name) => {
+                write!(f, "Error converting field `{index}` to type `{type_name}`")
+            }
+            CsvError::InvalidString => write!(f, "Cannot convert field to a valid string."),
+            CsvError::NotAField(index) => write!(f, "Not field at given index `{index}`."),
+        }
+    }
+}
+
+impl Error for CsvError<'_> {}
 /// A simple CSV Field container
 ///
 /// #Example
 /// ```
 /// # use csvlib::Field;
 /// let field : Field = String::from("This is a field").into();
-/// assert_eq!(field, Field::from_str("This is a field".into()));
-///
-/// let number_field : Field = 1.into();
-/// assert_eq!(number_field, Field::from_str("1"));
-/// assert_ne!(number_field, Field::from_str("2"));
+/// assert_eq!(field, Field::from("This is a field".to_owned()));
 ///
 /// println!("This is a CSV Field: {}", field);
 /// ```
@@ -93,14 +113,6 @@ impl Field {
         Self { inner }
     }
 
-    /// Creates a CSV Field from a string
-    ///
-    /// # Arguments
-    /// `string` A string slice to be contained  in the Field
-    pub fn from_str(string: &str) -> Self {
-        format!("{}", string).into()
-    }
-
     /// Retrieves a reference the inner bytes from the Field
     pub fn as_bytes(&self) -> &Vec<u8> {
         &self.inner
@@ -114,14 +126,13 @@ impl Field {
     /// # Errors
     /// If the bytes inside of the field cannot be parsed into a valid UTF8 String
     pub fn to_string(&self) -> Result<String> {
-        String::from_utf8(self.inner.clone()).map_err(|_err| "Error parsing string field".into())
+        String::from_utf8(self.inner.clone()).map_err(|_| CsvError::InvalidString)
     }
 }
 
 impl<T: std::str::FromStr + std::fmt::Display> From<T> for Field {
     fn from(entry: T) -> Self {
-        let string_val = format!("{}", entry);
-        Field::new(string_val.into_bytes())
+        Field::new(entry.to_string().as_bytes().to_vec())
     }
 }
 
@@ -134,19 +145,25 @@ impl std::fmt::Display for Field {
 /// A CSV Record which may contain several CSV Fields
 ///
 /// See [`Field`]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Record {
     inner: Vec<Field>,
     delim: char,
 }
 
-impl Record {
-    /// Constrcut a simple empty CSV Record
-    pub fn new() -> Self {
+impl Default for Record {
+    fn default() -> Self {
         Self {
             inner: Vec::new(),
             delim: DEFAULT_DELIM,
         }
+    }
+}
+
+impl Record {
+    /// Constrcut a simple empty CSV Record
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// Set the record's delimiter
@@ -202,11 +219,6 @@ impl Record {
         }
     }
 
-    /// Retrieves a [`Field`] from the record if it has been added.
-    pub fn get(&self, index: usize) -> Option<&Field> {
-        self.inner.get(index)
-    }
-
     /// Attempts to retrieve and cast a field to a given type.
     ///
     /// # Arguments
@@ -219,26 +231,17 @@ impl Record {
     /// ```
     /// let record = csvlib::csv!["This is a record", 25, 56.2];
     ///
-    /// assert_eq!(record.get_casted::<String>(0).unwrap(), "This is a record".to_string());
-    /// assert_eq!(record.get_casted::<u32>(1).unwrap(), 25);
-    /// assert_eq!(record.get_casted::<f64>(2).unwrap(), 56.2);
+    /// assert_eq!(record.get::<String>(0).unwrap(), "This is a record".to_string());
+    /// assert_eq!(record.get::<u32>(1).unwrap(), 25);
+    /// assert_eq!(record.get::<f64>(2).unwrap(), 56.2);
     /// ```
-    pub fn get_casted<T: std::str::FromStr>(&self, index: usize) -> Result<T> {
-        match self.get(index) {
-            Some(field) => field.to_string()?.parse::<T>().map_err(|_| {
-                format!(
-                    "Error: Could parse field at index: {} to {}",
-                    index,
-                    type_name::<T>(),
-                )
-                .into()
-            }),
-            _ => Err(format!(
-                "Error: Failed conversion to {} no valid field at index {}.",
-                type_name::<T>(),
-                index
-            )
-            .into()),
+    pub fn get<T: std::str::FromStr>(&self, index: usize) -> Result<T> {
+        match self.inner.get(index) {
+            Some(field) => field
+                .to_string()?
+                .parse::<T>()
+                .map_err(|_| CsvError::ConversionError(index, type_name::<T>())),
+            _ => Err(CsvError::NotAField(index)),
         }
     }
 
@@ -272,12 +275,10 @@ impl std::fmt::Display for Record {
                 } else {
                     record.push_str(&format!("{}{}{}", QUOTE as char, field, QUOTE as char));
                 }
+            } else if index != last_index {
+                record.push_str(&format!("{}{}", field, self.delim));
             } else {
-                if index != last_index {
-                    record.push_str(&format!("{}{}", field, self.delim));
-                } else {
-                    record.push_str(&format!("{}", field));
-                }
+                record.push_str(&format!("{}", field));
             }
         }
         write!(f, "{}", record)
@@ -286,9 +287,9 @@ impl std::fmt::Display for Record {
 
 /// A CSV Reader struct to allow reading from files and other streams
 #[allow(dead_code)]
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Reader<R> {
-    reader: R,
+    reader: BufReader<R>,
     header: Option<Record>,
     has_header: bool,
     delimeter: Option<char>,
@@ -310,7 +311,7 @@ where
     }
 
     /// Retreives the headers for this reader
-    pub fn header(&self) -> Option<Record> {
+    pub fn headers(&self) -> Option<Record> {
         self.header.clone()
     }
 }
@@ -326,6 +327,12 @@ pub struct ReaderBuilder<R> {
 impl<R> ReaderBuilder<R> {
     /// Create a new empty ReaderBuilder from an empty implementation
     pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl<R> Default for ReaderBuilder<R> {
+    fn default() -> Self {
         Self {
             reader: None,
             header: None,
@@ -349,24 +356,30 @@ where
     /// # Examples:
     /// ```no_run
     /// # use csvlib::Reader;
-    ///
+    /// let mut file = std::fs::File::open("name.csv").unwrap();
     /// let mut csv_reader = csvlib::Reader::builder()
     ///     .with_delimiter(',')
-    ///     .with_reader(std::io::stdin())
+    ///     .with_reader(&mut file)
     ///     .with_header(true)
     ///     .build()
     ///     .unwrap();
-    /// println!("{}", csv_reader.header().unwrap());
+    /// println!("{}", csv_reader.headers().unwrap());
     /// ```
     pub fn build(mut self) -> Result<Reader<R>> {
         match self.reader {
-            Some(mut reader) => {
+            Some(reader) => {
+                let mut reader = BufReader::new(reader);
                 let delimiter = match self.delimeter {
                     Some(delim) => delim,
                     _ => DEFAULT_DELIM,
                 };
                 if self.has_header {
-                    self.header = Some(read_fields(&mut reader, delimiter)?);
+                    self.header = Some(read_fields(
+                        &mut reader,
+                        delimiter,
+                        &mut Vec::with_capacity(100),
+                        &mut Vec::with_capacity(100),
+                    )?);
                 }
 
                 Ok(Reader {
@@ -376,7 +389,7 @@ where
                     delimeter: self.delimeter,
                 })
             }
-            _ => Err("Error: Cannot build a CSV reader without initailizing a reader/file".into()),
+            _ => Err(CsvError::ReadError),
         }
     }
 
@@ -418,7 +431,7 @@ where
 ///        .with_header(true)
 ///        .build()
 ///        .unwrap();
-///  println!("{}", csv_reader.header().unwrap());
+///  println!("{}", csv_reader.headers().unwrap());
 ///  for entry in csv_reader.entries() {
 ///  println!("{}", entry);
 ///  }
@@ -428,14 +441,22 @@ where
     R: std::io::Read,
 {
     owner: Reader<R>,
+
+    line_buffer: Vec<u8>,
+
+    field_buffer: Vec<u8>,
 }
-impl<'a, R: std::io::Read> Entries<R> {
+impl<R: std::io::Read> Entries<R> {
     fn new(owner: Reader<R>) -> Self {
-        Self { owner }
+        Self {
+            owner,
+            line_buffer: Vec::with_capacity(100),
+            field_buffer: Vec::with_capacity(100),
+        }
     }
 }
 
-impl<'a, R: std::io::Read> Iterator for Entries<R> {
+impl<R: std::io::Read> Iterator for Entries<R> {
     type Item = Record;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -443,7 +464,13 @@ impl<'a, R: std::io::Read> Iterator for Entries<R> {
             Some(delim) => delim,
             _ => DEFAULT_DELIM,
         };
-        read_fields(&mut self.owner.reader, delimiter).ok()
+        read_fields(
+            &mut self.owner.reader,
+            delimiter,
+            &mut self.field_buffer,
+            &mut self.line_buffer,
+        )
+        .ok()
     }
 }
 
@@ -453,59 +480,81 @@ impl<'a, R: std::io::Read> Iterator for Entries<R> {
 /// # Arguments:
 /// `reader` std::io::Read to get data from
 /// `separator' character delimiter for CSV files
-fn read_fields(reader: &mut impl std::io::Read, separator: char) -> Result<Record> {
-    let mut field = Vec::<u8>::new();
-    let mut one_char: [u8; 1] = [0; 1];
+fn read_fields(
+    reader: &mut impl std::io::BufRead,
+    separator: char,
+    field_buffer: &mut Vec<u8>,
+    line_buffer: &mut Vec<u8>,
+) -> Result<Record> {
     let mut record = Record::new();
-    let mut escaped = false;
+    let mut multi_line = true;
 
-    while let Ok(count) = reader.read(&mut one_char) {
-        if count > 0 {
-            let current_char = one_char[0];
-            if current_char == LF {
-                if field.ends_with(&[CR]) {
-                    field.pop();
-                }
-                if field.ends_with(&[QUOTE]) && field.starts_with(&[QUOTE]) && field.len() > 1 {
-                    field.pop();
-                    field.remove(0);
-                    field.clear();
-                }
-                record.add(Field::new(field.clone()));
-                break;
-            }
+    while multi_line {
+        multi_line = false;
+        line_buffer.clear();
+        match reader.read_until(b'\n', line_buffer) {
+            Ok(0) => return Err(CsvError::RecordError),
+            Ok(_n) => {
+                let mut escaping = false;
 
-            if current_char == separator as u8 && !escaped {
-                if field.ends_with(&[QUOTE]) && field.starts_with(&[QUOTE]) {
-                    field.pop();
-                    field.remove(0);
-                    field.clear();
+                field_buffer.clear();
+                let mut quote_count = 0;
+                for current_char in line_buffer.iter() {
+                    let current_char = *current_char;
+                    if current_char == QUOTE {
+                        quote_count += 1;
+                    }
+
+                    if current_char == QUOTE {
+                        if quote_count == 1 {
+                            escaping = true;
+                            continue;
+                        } else if quote_count > 1 && quote_count % 2 == 0 {
+                            escaping = false;
+                            // quote_count = 0;
+                            continue;
+                        }
+                    } else if current_char == separator as u8 {
+                        if !escaping {
+                            record.add(Field::new(field_buffer.clone()));
+                            field_buffer.clear();
+                            quote_count = 0;
+                            continue;
+                        }
+                    } else if current_char == LF {
+                        if !escaping {
+                            continue;
+                        }
+                    } else if current_char == CR {
+                        if !escaping {
+                            record.add(Field::new(field_buffer.clone()));
+                            field_buffer.clear();
+                            return Ok(record);
+                        } else {
+                            multi_line = true;
+                        }
+                    }
+
+                    field_buffer.push(current_char);
                 }
-                record.add(Field::new(field.clone()));
-                field.clear();
-                escaped = false;
-                continue;
+
+                // got to the end and but did not find  a carriage return
+                if !field_buffer.is_empty() {
+                    record.add(Field::new(field_buffer.clone()));
+                    field_buffer.clear();
+                }
             }
-            if escaped && current_char == QUOTE {
-                escaped = true;
-            }
-            field.push(current_char);
-        } else {
-            if !field.is_empty() {
-                record.add(Field::new(field.clone()));
-                break;
-            } else {
-                return Err("Error: Could not parse entry from reader".into());
-            }
+            Err(_) => return Err(CsvError::ReadError),
         }
     }
+
     Ok(record)
 }
 
 /// A CSV Writer implementation. Write to files or standard output.
 pub struct Writer<R> {
     writer: R,
-    delimiter: Option<char>
+    delimiter: Option<char>,
 }
 
 impl<R: std::io::Write + Sized> Writer<R> {
@@ -514,13 +563,16 @@ impl<R: std::io::Write + Sized> Writer<R> {
     /// # Arguments:
     /// `writer` std::io::Write implemetnation to write to
     pub fn from_writer(writer: R) -> Self {
-        Self { writer, delimiter: None }
+        Self {
+            writer,
+            delimiter: None,
+        }
     }
 
     /// Set a delimiver for a writer
     /// # Arguments:
     /// `delim` delimiter for CSV records being written.
-    pub fn with_delimiter(mut self, delim : char) -> Self {
+    pub fn with_delimiter(mut self, delim: char) -> Self {
         self.delimiter = Some(delim);
         self
     }
@@ -531,10 +583,10 @@ impl<R: std::io::Write + Sized> Writer<R> {
     /// `record` CSV record to be written.
     pub fn write(&mut self, record: &Record) -> Result<()> {
         let mut record = record.clone();
-        if let Some(delimiter ) = self.delimiter.as_ref() {
+        if let Some(delimiter) = self.delimiter.as_ref() {
             record.delim = *delimiter;
         }
-        write!(self.writer, "{}\n", record).map_err(|op| op.to_string().into())
+        writeln!(self.writer, "{}", record).map_err(|_| CsvError::InvalidString)
     }
 
     /// Convenient method to write several [`Record`]s at once.
@@ -543,7 +595,7 @@ impl<R: std::io::Write + Sized> Writer<R> {
     /// `records`  vector of records to be written.
     pub fn write_all(&mut self, records: &[Record]) -> Result<()> {
         for record in records {
-            self.write(&record)?;
+            self.write(record)?;
         }
         Ok(())
     }
@@ -554,10 +606,10 @@ impl<R: std::io::Write + Sized> Writer<R> {
 /// # Examples:
 /// ```
 /// # #[macro_use]
-/// # fn main() {
+///
 /// let header = csvlib::csv!["Header 1", "Header 2", "Header 3"];
 /// let entry1 = csvlib::csv!["This is text", 1.2, 5];
-/// # }
+///
 /// ```
 #[macro_export]
 macro_rules! csv {

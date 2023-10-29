@@ -2,6 +2,6 @@
     "editor.formatOnSave": true,
     "editor.defaultFormatter": "matklad.rust-analyzer",
     "[rust]": {
-        "editor.defaultFormatter": "matklad.rust-analyzer"
+        "editor.defaultFormatter": "rust-lang.rust-analyzer"
     }
 }
