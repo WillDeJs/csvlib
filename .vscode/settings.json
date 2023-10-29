@@ -3,5 +3,8 @@
     "editor.defaultFormatter": "matklad.rust-analyzer",
     "[rust]": {
         "editor.defaultFormatter": "rust-lang.rust-analyzer"
-    }
+    },
+    "cSpell.words": [
+        "csvlib"
+    ]
 }

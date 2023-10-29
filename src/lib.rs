@@ -24,9 +24,6 @@
 //!```
 //! # Example (Reader):
 //! ```no_run
-//!     // Read from files
-//!     let file = std::fs::File::open("./TSLA.csv").unwrap();
-//!
 //!     // create custom records
 //!     let record = csvlib::csv!["Intr,o", 34, "klk", "manito"];
 //!
@@ -35,12 +32,9 @@
 //!     println!("{}", record);
 //!
 //!     // Iterate through records
-//!     let mut csv_reader = csvlib::Reader::builder()
-//!         .with_delimiter(',')
-//!         .with_reader(file)
-//!         .with_header(true)
-//!         .build()
+//!     let mut csv_reader = csvlib::Reader::from_path("./TSLA.csv")
 //!         .unwrap();
+//!
 //!     println!("{}", csv_reader.headers().unwrap());
 //!     for entry in csv_reader.entries() {
 //!         println!("{}", entry);
@@ -49,11 +43,13 @@
 //! ```
 
 pub use std::ops::Index;
+pub use std::str::FromStr;
 use std::{
     any::type_name,
     error::Error,
     fmt::{self, Debug, Display},
-    io::BufReader,
+    io::{self, BufReader},
+    path::Path,
 };
 
 const CR: u8 = b'\r';
@@ -71,7 +67,9 @@ pub enum CsvError<'a> {
     ReadError,
     ConversionError(usize, &'a str),
     InvalidString,
+    FieldParseError(&'a str),
     NotAField(usize),
+    FileError,
 }
 
 impl Display for CsvError<'_> {
@@ -84,6 +82,10 @@ impl Display for CsvError<'_> {
             }
             CsvError::InvalidString => write!(f, "Cannot convert field to a valid string."),
             CsvError::NotAField(index) => write!(f, "Not field at given index `{index}`."),
+            CsvError::FieldParseError(type_name) => {
+                write!(f, "Error parsing field to `{type_name}`.")
+            }
+            CsvError::FileError => write!(f, "Error accessing file."),
         }
     }
 }
@@ -118,7 +120,7 @@ impl Field {
         &self.inner
     }
 
-    /// Attempts to convert the Field into a String.
+    /// Convert the Field into a String.
     ///
     /// If parsing is possible a Result is returned which needs to be unwrapped
     /// in order to retrieve the inner string value.
@@ -127,6 +129,19 @@ impl Field {
     /// If the bytes inside of the field cannot be parsed into a valid UTF8 String
     pub fn to_string(&self) -> Result<String> {
         String::from_utf8(self.inner.clone()).map_err(|_| CsvError::InvalidString)
+    }
+
+    /// Cast field into a given type.
+    ///
+    /// If the parsing is not possible, a result with an error is returned.
+    ///
+    /// # Errors
+    /// If the bytes inside the field cannot be parsed into valid UTF8 strings.
+    /// If the resulting field cannot be parsed into the type specified for conversion
+    pub fn cast<T: FromStr>(&self) -> Result<T> {
+        self.to_string()?
+            .parse::<T>()
+            .map_err(|_| CsvError::FieldParseError(type_name::<T>()))
     }
 }
 
@@ -159,9 +174,8 @@ impl Default for Record {
         }
     }
 }
-
 impl Record {
-    /// Constrcut a simple empty CSV Record
+    /// Construct a simple empty CSV Record
     pub fn new() -> Self {
         Self::default()
     }
@@ -173,6 +187,29 @@ impl Record {
         self.delim = delim;
     }
 
+    /// Returns an iterator over the inner fields
+    ///
+    ///  # Examples
+    ///
+    /// ```
+    /// use csvlib::{Reader, FromStr};
+    ///
+    /// let data = r#"header1,header2,header3,header4
+    ///"test,",12,13,"com,ma"
+    ///"wow",22,23,24
+    ///"b""d",32,33,34"#;
+    ///
+    /// let reader = Reader::from_str(data).unwrap();
+    /// let mut header = reader.headers().unwrap();
+    ///
+    /// for field in header.iter() {
+    ///     print!("{}\t", field.cast::<String>().unwrap());
+    /// }
+    /// ```
+    ///
+    pub fn iter(&mut self) -> std::slice::Iter<'_, Field> {
+        self.inner.iter()
+    }
     /// Adds a [`Field`] to the record.
     ///
     /// # Arguments:
@@ -292,10 +329,10 @@ pub struct Reader<R> {
     reader: BufReader<R>,
     header: Option<Record>,
     has_header: bool,
-    delimeter: Option<char>,
+    delimiter: Option<char>,
 }
 
-impl<R: std::io::Read> Reader<R> {
+impl<R: io::Read> Reader<R> {
     pub fn entries(self) -> Entries<R> {
         Entries::new(self)
     }
@@ -303,16 +340,58 @@ impl<R: std::io::Read> Reader<R> {
 
 impl<R> Reader<R>
 where
-    R: std::io::Read,
+    R: io::Read,
 {
     /// Creates a [`ReaderBuilder`] to construct a CSV Reader
     pub fn builder() -> ReaderBuilder<R> {
         ReaderBuilder::new()
     }
 
-    /// Retreives the headers for this reader
+    /// Retrieves the headers for this reader
     pub fn headers(&self) -> Option<Record> {
         self.header.clone()
+    }
+}
+
+impl Reader<std::fs::File> {
+    pub fn from_path(path: impl AsRef<Path>) -> Result<Self> {
+        let file = std::fs::File::open(path).map_err(|_| CsvError::FileError)?;
+        let mut reader = BufReader::new(file);
+        let header = read_fields(
+            &mut reader,
+            DEFAULT_DELIM,
+            &mut Vec::with_capacity(100),
+            &mut Vec::with_capacity(100),
+        )?;
+
+        Ok(Reader {
+            reader,
+            header: Some(header),
+            has_header: true,
+            delimiter: Some(DEFAULT_DELIM),
+        })
+    }
+}
+
+impl FromStr for Reader<std::io::Cursor<String>> {
+    type Err = CsvError<'static>;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        let cursor = std::io::Cursor::new(s.to_owned());
+        let mut reader = BufReader::new(cursor);
+        let header = read_fields(
+            &mut reader,
+            DEFAULT_DELIM,
+            &mut Vec::with_capacity(100),
+            &mut Vec::with_capacity(100),
+        )?;
+
+        Ok(Reader {
+            reader,
+            header: Some(header),
+            has_header: true,
+            delimiter: Some(DEFAULT_DELIM),
+        })
     }
 }
 
@@ -321,7 +400,7 @@ pub struct ReaderBuilder<R> {
     reader: Option<R>,
     header: Option<Record>,
     has_header: bool,
-    delimeter: Option<char>,
+    delimiter: Option<char>,
 }
 
 impl<R> ReaderBuilder<R> {
@@ -337,16 +416,16 @@ impl<R> Default for ReaderBuilder<R> {
             reader: None,
             header: None,
             has_header: false,
-            delimeter: None,
+            delimiter: None,
         }
     }
 }
 
 impl<R> ReaderBuilder<R>
 where
-    R: std::io::Read,
+    R: io::Read,
 {
-    /// Constrcuts a CSV Reader from a builder.
+    /// Constructs a CSV Reader from a builder.
     ///
     /// Compiles all options and required fields from what's fed to the ReaderBuilder.
     ///
@@ -356,12 +435,8 @@ where
     /// # Examples:
     /// ```no_run
     /// # use csvlib::Reader;
-    /// let mut file = std::fs::File::open("name.csv").unwrap();
-    /// let mut csv_reader = csvlib::Reader::builder()
-    ///     .with_delimiter(',')
-    ///     .with_reader(&mut file)
-    ///     .with_header(true)
-    ///     .build()
+    ///
+    /// let mut csv_reader = csvlib::Reader::from_path("name.csv")
     ///     .unwrap();
     /// println!("{}", csv_reader.headers().unwrap());
     /// ```
@@ -369,7 +444,7 @@ where
         match self.reader {
             Some(reader) => {
                 let mut reader = BufReader::new(reader);
-                let delimiter = match self.delimeter {
+                let delimiter = match self.delimiter {
                     Some(delim) => delim,
                     _ => DEFAULT_DELIM,
                 };
@@ -386,7 +461,7 @@ where
                     reader,
                     header: self.header,
                     has_header: self.has_header,
-                    delimeter: self.delimeter,
+                    delimiter: self.delimiter,
                 })
             }
             _ => Err(CsvError::ReadError),
@@ -397,7 +472,7 @@ where
     /// # Arguments:
     /// `delim` character delimiter to be used.
     pub fn with_delimiter(mut self, delim: char) -> Self {
-        self.delimeter = Some(delim);
+        self.delimiter = Some(delim);
         self
     }
 
@@ -438,7 +513,7 @@ where
 /// ```
 pub struct Entries<R>
 where
-    R: std::io::Read,
+    R: io::Read,
 {
     owner: Reader<R>,
 
@@ -446,7 +521,7 @@ where
 
     field_buffer: Vec<u8>,
 }
-impl<R: std::io::Read> Entries<R> {
+impl<R: io::Read> Entries<R> {
     fn new(owner: Reader<R>) -> Self {
         Self {
             owner,
@@ -456,11 +531,11 @@ impl<R: std::io::Read> Entries<R> {
     }
 }
 
-impl<R: std::io::Read> Iterator for Entries<R> {
+impl<R: io::Read> Iterator for Entries<R> {
     type Item = Record;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let delimiter = match self.owner.delimeter {
+        let delimiter = match self.owner.delimiter {
             Some(delim) => delim,
             _ => DEFAULT_DELIM,
         };
@@ -481,7 +556,7 @@ impl<R: std::io::Read> Iterator for Entries<R> {
 /// `reader` std::io::Read to get data from
 /// `separator' character delimiter for CSV files
 fn read_fields(
-    reader: &mut impl std::io::BufRead,
+    reader: &mut impl io::BufRead,
     separator: char,
     field_buffer: &mut Vec<u8>,
     line_buffer: &mut Vec<u8>,
@@ -557,11 +632,26 @@ pub struct Writer<R> {
     delimiter: Option<char>,
 }
 
-impl<R: std::io::Write + Sized> Writer<R> {
+impl Writer<std::fs::File> {
+    /// Creates a CSV Writer using a path given by the user.
+    ///
+    /// `path` the path to the file to be used to write CSV
+    /// # Returns
+    /// A result with the given writer, or an error if an error accessing the file.
+    ///
+    /// # Error
+    /// If the underlying file behind path is not accessible for any reason.
+    pub fn from_path(path: impl AsRef<Path>) -> Result<Self> {
+        let file = std::fs::File::open(path).map_err(|_| CsvError::FileError)?;
+        Ok(Self::from_writer(file))
+    }
+}
+
+impl<R: io::Write + Sized> Writer<R> {
     /// Initialize a CSV Writer from a std::io::Write implementation
     ///
     /// # Arguments:
-    /// `writer` std::io::Write implemetnation to write to
+    /// `writer` std::io::Write implementation to write to
     pub fn from_writer(writer: R) -> Self {
         Self {
             writer,
@@ -569,7 +659,7 @@ impl<R: std::io::Write + Sized> Writer<R> {
         }
     }
 
-    /// Set a delimiver for a writer
+    /// Set a delimiter for a writer
     /// # Arguments:
     /// `delim` delimiter for CSV records being written.
     pub fn with_delimiter(mut self, delim: char) -> Self {
