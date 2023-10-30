@@ -104,6 +104,7 @@ impl Error for CsvError<'_> {}
 #[derive(PartialEq, Debug, Clone)]
 pub struct Field {
     inner: Vec<u8>,
+    delim: char,
 }
 
 impl Field {
@@ -112,7 +113,10 @@ impl Field {
     /// # Arguments
     /// `inner` Vec<u8> bytes to be contained in the Field
     pub fn new(inner: Vec<u8>) -> Self {
-        Self { inner }
+        Self {
+            inner,
+            delim: DEFAULT_DELIM,
+        }
     }
 
     /// Retrieves a reference the inner bytes from the Field
@@ -153,7 +157,7 @@ impl<T: std::str::FromStr + std::fmt::Display> From<T> for Field {
 
 impl std::fmt::Display for Field {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.to_string().unwrap())
+        write!(f, "{}", self.to_string().map_err(|_| std::fmt::Error)?)
     }
 }
 
@@ -301,21 +305,13 @@ impl std::fmt::Display for Record {
         let mut record = String::new();
         let last_index = self.inner.len().saturating_sub(1);
         for (index, field) in self.inner.iter().enumerate() {
-            if field.inner.contains(&(self.delim as u8))
-                && !(field.inner.starts_with(&[QUOTE]) && field.inner.ends_with(&[QUOTE]))
-            {
-                if index != last_index {
-                    record.push_str(&format!(
-                        "{}{}{}{}",
-                        QUOTE as char, field, QUOTE as char, self.delim
-                    ));
-                } else {
-                    record.push_str(&format!("{}{}{}", QUOTE as char, field, QUOTE as char));
-                }
-            } else if index != last_index {
-                record.push_str(&format!("{}{}", field, self.delim));
+            let field_value =
+                format_field_for_writing(field, self.delim).map_err(|_| std::fmt::Error)?;
+
+            if index != last_index {
+                record.push_str(&format!("{}{}", field_value, self.delim));
             } else {
-                record.push_str(&format!("{}", field));
+                record.push_str(&field_value);
             }
         }
         write!(f, "{}", record)
@@ -642,7 +638,7 @@ impl Writer<std::fs::File> {
     /// # Error
     /// If the underlying file behind path is not accessible for any reason.
     pub fn from_path(path: impl AsRef<Path>) -> Result<Self> {
-        let file = std::fs::File::open(path).map_err(|_| CsvError::FileError)?;
+        let file = std::fs::File::create(path).map_err(|_| CsvError::FileError)?;
         Ok(Self::from_writer(file))
     }
 }
@@ -710,4 +706,50 @@ macro_rules! csv {
             record
         }
     };
+}
+
+fn format_field_for_writing(field: &Field, delimiter: char) -> Result<String> {
+    let field = field.to_string()?;
+    let count = field.chars().count();
+    let mut new_record = String::new();
+    let escaped = field.ends_with(QUOTE as char) && field.starts_with(QUOTE as char);
+
+    // Iterate through all the characters, the logic is
+    // If this character is a double quote, we set a flag true to indicate we found one
+    // the `value` contains a new string being appended each character
+    // If the flag is set, and the next character is not a double quote then we must escape this double quote
+    // If we are at the end of the line and we found a double quote at the end of the field but not at the beginning, we must escape it
+    let (_, _) = field.chars().enumerate().fold(
+        (false, &mut new_record),
+        |(insert, value), (index, current_char)| {
+            // previous was a quote and this is not, lets escape the other
+            if insert && current_char != QUOTE as char {
+                value.push(QUOTE as char);
+                value.push(current_char);
+                (false, value)
+            }
+            // if we are at the end of the field, and found a quote, but it is not escaped
+            // we must escape it
+            else if !escaped && index == count - 1 && current_char == QUOTE as char && !insert {
+                value.push(QUOTE as char);
+                value.push(current_char);
+                (true, value)
+            } else if current_char == QUOTE as char {
+                value.push(current_char);
+                (true, value)
+            } else {
+                value.push(current_char);
+                (false, value)
+            }
+        },
+    );
+
+    // Add double quotes if needed.
+    if (new_record.contains(delimiter) || new_record.contains(QUOTE as char))
+        && !(new_record.ends_with(QUOTE as char) && new_record.starts_with(QUOTE as char))
+    {
+        new_record.insert(0, QUOTE as char);
+        new_record.push(QUOTE as char);
+    }
+    Ok(new_record)
 }
