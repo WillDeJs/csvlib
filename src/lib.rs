@@ -104,7 +104,6 @@ impl Error for CsvError<'_> {}
 #[derive(PartialEq, Debug, Clone)]
 pub struct Field {
     inner: Vec<u8>,
-    delim: char,
 }
 
 impl Field {
@@ -112,10 +111,9 @@ impl Field {
     ///
     /// # Arguments
     /// `inner` Vec<u8> bytes to be contained in the Field
-    pub fn new(inner: Vec<u8>) -> Self {
+    pub fn new(inner: &[u8]) -> Self {
         Self {
-            inner,
-            delim: DEFAULT_DELIM,
+            inner: inner.to_vec(),
         }
     }
 
@@ -151,7 +149,7 @@ impl Field {
 
 impl<T: std::str::FromStr + std::fmt::Display> From<T> for Field {
     fn from(entry: T) -> Self {
-        Field::new(entry.to_string().as_bytes().to_vec())
+        Field::new(entry.to_string().as_bytes())
     }
 }
 
@@ -182,6 +180,19 @@ impl Record {
     /// Construct a simple empty CSV Record
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Initialize a record with an allocated capacity of fields.
+    ///
+    /// Useful to avoid multiple allocations.
+    ///
+    /// # Arguments
+    /// `size`  Number of headers in the record.
+    pub fn with_capacity(size: usize) -> Self {
+        Self {
+            inner: Vec::with_capacity(size),
+            delim: DEFAULT_DELIM,
+        }
     }
 
     /// Set the record's delimiter
@@ -305,9 +316,16 @@ impl std::fmt::Display for Record {
         let mut record = String::new();
         let last_index = self.inner.len().saturating_sub(1);
         for (index, field) in self.inner.iter().enumerate() {
-            let field_value =
-                format_field_for_writing(field, self.delim).map_err(|_| std::fmt::Error)?;
+            let field_value = field.to_string().map_err(|_| std::fmt::Error)?;
 
+            // escape every single quote. This assumes what's present in each field
+            // is what the user wants in it, no need for the user to escape things for us
+            let mut field_value = field_value.replace('\"', "\"\"");
+
+            // If we have quotes or commas, then we need outer double quotes in this field
+            if field_value.contains(self.delim) || field_value.contains(QUOTE as char) {
+                field_value = format!("\"{field_value}\"");
+            }
             if index != last_index {
                 record.push_str(&format!("{}{}", field_value, self.delim));
             } else {
@@ -582,12 +600,11 @@ fn read_fields(
                             continue;
                         } else if quote_count > 1 && quote_count % 2 == 0 {
                             escaping = false;
-                            // quote_count = 0;
                             continue;
                         }
                     } else if current_char == separator as u8 {
                         if !escaping {
-                            record.add(Field::new(field_buffer.clone()));
+                            record.add(Field::new(field_buffer));
                             field_buffer.clear();
                             quote_count = 0;
                             continue;
@@ -598,7 +615,7 @@ fn read_fields(
                         }
                     } else if current_char == CR {
                         if !escaping {
-                            record.add(Field::new(field_buffer.clone()));
+                            record.add(Field::new(field_buffer));
                             field_buffer.clear();
                             return Ok(record);
                         } else {
@@ -611,7 +628,7 @@ fn read_fields(
 
                 // got to the end and but did not find  a carriage return
                 if !field_buffer.is_empty() {
-                    record.add(Field::new(field_buffer.clone()));
+                    record.add(Field::new(field_buffer));
                     field_buffer.clear();
                 }
             }
@@ -706,50 +723,4 @@ macro_rules! csv {
             record
         }
     };
-}
-
-fn format_field_for_writing(field: &Field, delimiter: char) -> Result<String> {
-    let field = field.to_string()?;
-    let count = field.chars().count();
-    let mut new_record = String::new();
-    let escaped = field.ends_with(QUOTE as char) && field.starts_with(QUOTE as char);
-
-    // Iterate through all the characters, the logic is
-    // If this character is a double quote, we set a flag true to indicate we found one
-    // the `value` contains a new string being appended each character
-    // If the flag is set, and the next character is not a double quote then we must escape this double quote
-    // If we are at the end of the line and we found a double quote at the end of the field but not at the beginning, we must escape it
-    let (_, _) = field.chars().enumerate().fold(
-        (false, &mut new_record),
-        |(insert, value), (index, current_char)| {
-            // previous was a quote and this is not, lets escape the other
-            if insert && current_char != QUOTE as char {
-                value.push(QUOTE as char);
-                value.push(current_char);
-                (false, value)
-            }
-            // if we are at the end of the field, and found a quote, but it is not escaped
-            // we must escape it
-            else if !escaped && index == count - 1 && current_char == QUOTE as char && !insert {
-                value.push(QUOTE as char);
-                value.push(current_char);
-                (true, value)
-            } else if current_char == QUOTE as char {
-                value.push(current_char);
-                (true, value)
-            } else {
-                value.push(current_char);
-                (false, value)
-            }
-        },
-    );
-
-    // Add double quotes if needed.
-    if (new_record.contains(delimiter) || new_record.contains(QUOTE as char))
-        && !(new_record.ends_with(QUOTE as char) && new_record.starts_with(QUOTE as char))
-    {
-        new_record.insert(0, QUOTE as char);
-        new_record.push(QUOTE as char);
-    }
-    Ok(new_record)
 }
