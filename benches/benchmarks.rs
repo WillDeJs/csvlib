@@ -1,11 +1,7 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 
 fn mine() {
-    let reader = csvlib::Reader::builder()
-        .with_reader(std::fs::File::open("AAPL.csv").unwrap())
-        .with_header(true)
-        .build()
-        .unwrap();
+    let reader = csvlib::Reader::from_path("AAPL.csv").unwrap();
     // Date,Open,High,Low,Close,Adj Close,Volume
     let mut total: f64 = 0.0;
     let mut count = 0;

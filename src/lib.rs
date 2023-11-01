@@ -46,6 +46,7 @@ pub use std::ops::Index;
 pub use std::str::FromStr;
 use std::{
     any::type_name,
+    borrow::BorrowMut,
     error::Error,
     fmt::{self, Debug, Display},
     io::{self, BufReader},
@@ -96,8 +97,8 @@ impl Error for CsvError<'_> {}
 /// #Example
 /// ```
 /// # use csvlib::Field;
-/// let field : Field = String::from("This is a field").into();
-/// assert_eq!(field, Field::from("This is a field".to_owned()));
+/// let field : Field = "This is a field".into();
+/// assert_eq!(field, Field::from("This is a field"));
 ///
 /// println!("This is a CSV Field: {}", field);
 /// ```
@@ -147,9 +148,16 @@ impl Field {
     }
 }
 
-impl<T: std::str::FromStr + std::fmt::Display> From<T> for Field {
-    fn from(entry: T) -> Self {
-        Field::new(entry.to_string().as_bytes())
+impl FromStr for Field {
+    type Err = CsvError<'static>;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Ok(Field::new(s.as_bytes()))
+    }
+}
+impl From<&str> for Field {
+    fn from(value: &str) -> Self {
+        Field::new(value.as_bytes())
     }
 }
 
@@ -164,7 +172,8 @@ impl std::fmt::Display for Field {
 /// See [`Field`]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Record {
-    inner: Vec<Field>,
+    inner: Vec<u8>,
+    ranges: Vec<(usize, usize)>,
     delim: char,
 }
 
@@ -172,6 +181,7 @@ impl Default for Record {
     fn default() -> Self {
         Self {
             inner: Vec::new(),
+            ranges: Vec::new(),
             delim: DEFAULT_DELIM,
         }
     }
@@ -191,6 +201,7 @@ impl Record {
     pub fn with_capacity(size: usize) -> Self {
         Self {
             inner: Vec::with_capacity(size),
+            ranges: Vec::new(),
             delim: DEFAULT_DELIM,
         }
     }
@@ -222,53 +233,22 @@ impl Record {
     /// }
     /// ```
     ///
-    pub fn iter(&mut self) -> std::slice::Iter<'_, Field> {
-        self.inner.iter()
+    pub fn iter(&self) -> FieldsIter {
+        FieldsIter {
+            record: self,
+            index: 0,
+        }
     }
+
     /// Adds a [`Field`] to the record.
     ///
     /// # Arguments:
     /// `field` A Field of any type that implements [`std::fmt::Display`]
-    pub fn add<T>(&mut self, field: T)
-    where
-        Field: From<T>,
-    {
-        self.inner.push(field.into())
-    }
-
-    /// Remove a [`Field`] from a record if it exists at a given index.
-    ///
-    /// # Arguments:
-    /// `index` the location of the Field in the record.
-    ///
-    /// # Panics
-    /// Panics if the index is not a valid entry in the record.
-    ///
-    /// If record index is not known consider using remove_item
-    pub fn remove<T>(&mut self, index: usize) -> Field
-    where
-        Field: From<T>,
-        T: Clone,
-    {
-        self.inner.remove(index)
-    }
-
-    /// Remove a [`Field`] from a record if it exists.
-    ///
-    /// # Arguments:
-    /// `field` a reference to the field bering deleted
-    pub fn remove_item<T>(&mut self, field: &T)
-    where
-        Field: From<T>,
-        T: Clone,
-    {
-        for (index, inner_field) in self.inner.iter().enumerate() {
-            if inner_field == &field.clone().into() {
-                self.inner.remove(index);
-
-                break;
-            }
-        }
+    pub fn add(&mut self, field: &[u8]) {
+        let start = self.inner.len();
+        let length = field.len();
+        self.ranges.push((start, start + length));
+        self.inner.extend_from_slice(field)
     }
 
     /// Attempts to retrieve and cast a field to a given type.
@@ -288,26 +268,33 @@ impl Record {
     /// assert_eq!(record.get::<f64>(2).unwrap(), 56.2);
     /// ```
     pub fn get<T: std::str::FromStr>(&self, index: usize) -> Result<T> {
-        match self.inner.get(index) {
-            Some(field) => field
-                .to_string()?
+        match self.ranges.get(index) {
+            Some((start, end)) => Ok(String::from_utf8_lossy(&self.inner[*start..*end])
+                .borrow_mut()
                 .parse::<T>()
-                .map_err(|_| CsvError::ConversionError(index, type_name::<T>())),
+                .map_err(|_| CsvError::ConversionError(index, type_name::<T>()))?),
             _ => Err(CsvError::NotAField(index)),
+        }
+    }
+
+    pub fn get_range(&self, index: usize) -> Option<&[u8]> {
+        match self.ranges.get(index) {
+            Some((start, end)) => Some(&self.inner[*start..*end]),
+            None => None,
         }
     }
 
     /// Retrieves the number of [`Field`]s in the record
     pub fn count(&self) -> usize {
-        self.inner.len()
+        self.ranges.len()
     }
 }
 
 impl Index<usize> for Record {
-    type Output = Field;
+    type Output = [u8];
 
     fn index(&self, index: usize) -> &Self::Output {
-        &self.inner[index]
+        self.get_range(index).unwrap()
     }
 }
 
@@ -315,7 +302,7 @@ impl std::fmt::Display for Record {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut record = String::new();
         let last_index = self.inner.len().saturating_sub(1);
-        for (index, field) in self.inner.iter().enumerate() {
+        for (index, field) in self.iter().enumerate() {
             let field_value = field.to_string().map_err(|_| std::fmt::Error)?;
 
             // escape every single quote. This assumes what's present in each field
@@ -336,6 +323,19 @@ impl std::fmt::Display for Record {
     }
 }
 
+pub struct FieldsIter<'a> {
+    record: &'a Record,
+    index: usize,
+}
+
+impl Iterator for FieldsIter<'_> {
+    type Item = Field;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.index += 1;
+        self.record.get(self.index - 1).ok()
+    }
+}
 /// A CSV Reader struct to allow reading from files and other streams
 #[allow(dead_code)]
 #[derive(Debug)]
@@ -584,7 +584,7 @@ fn read_fields(
     field_buffer: &mut Vec<u8>,
     line_buffer: &mut Vec<u8>,
 ) -> Result<Record> {
-    let mut record = Record::new();
+    let mut record = Record::with_capacity(line_buffer.capacity());
     let mut multi_line = true;
 
     while multi_line {
@@ -613,7 +613,7 @@ fn read_fields(
                         }
                     } else if current_char == separator as u8 {
                         if !escaping {
-                            record.add(Field::new(field_buffer));
+                            record.add(field_buffer);
                             field_buffer.clear();
                             quote_count = 0;
                             continue;
@@ -624,7 +624,7 @@ fn read_fields(
                         }
                     } else if current_char == CR {
                         if !escaping {
-                            record.add(Field::new(field_buffer));
+                            record.add(field_buffer);
                             field_buffer.clear();
                             return Ok(record);
                         } else {
@@ -637,7 +637,7 @@ fn read_fields(
 
                 // got to the end and but did not find  a carriage return
                 if !field_buffer.is_empty() {
-                    record.add(Field::new(field_buffer));
+                    record.add(field_buffer);
                     field_buffer.clear();
                 }
             }
@@ -732,7 +732,7 @@ macro_rules! csv {
     ($($e:expr),*) => {
         {
             let mut record = $crate::Record::new();
-            $(record.add(format!("{}",$e));)*
+            $(record.add(&format!("{}",$e).as_bytes());)*
             record
         }
     };
