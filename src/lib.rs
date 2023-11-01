@@ -368,6 +368,15 @@ where
 }
 
 impl Reader<std::fs::File> {
+    /// Create a reader from a file path.
+    ///
+    /// Comma `,` is assumed as delimiter and headers to be present.
+    /// If an alternative delimiter or header is required please see
+    /// `
+    /// csvlib::Reader::builder().with_delimiter(';').with_header(true);
+    /// `
+    ///
+    ///
     pub fn from_path(path: impl AsRef<Path>) -> Result<Self> {
         let file = std::fs::File::open(path).map_err(|_| CsvError::FileError)?;
         let mut reader = BufReader::new(file);
@@ -648,6 +657,10 @@ pub struct Writer<R> {
 impl Writer<std::fs::File> {
     /// Creates a CSV Writer using a path given by the user.
     ///
+    /// A default delimiter of comma "," is assumed. If an alternative separator
+    /// is desired, please see `csvlib::Writer::from_writer(...).with_delimiter(...)`.
+    ///
+    /// # Arguments
     /// `path` the path to the file to be used to write CSV
     /// # Returns
     /// A result with the given writer, or an error if an error accessing the file.

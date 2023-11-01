@@ -48,7 +48,7 @@ fn test_well_formed_csv_with_number_fields() {
 fn test_well_formed_csv_with_quoted_strings() {
     let data = r#"header1,header2,header3,header4
 "test,",12,13,"com,ma"
-"wow",22,23,24
+"""wow""",22,23,24
 "b""d",32,33,34"#;
     let input = std::io::Cursor::new(data);
     let reader = Reader::builder()
@@ -63,7 +63,7 @@ fn test_well_formed_csv_with_quoted_strings() {
     assert_eq!(rows[0].get::<String>(0).unwrap(), "test,".to_owned());
     assert_eq!(rows[0].get::<String>(3).unwrap(), "com,ma".to_owned());
     assert_eq!(rows[1].count(), 4);
-    assert_eq!(rows[1].get::<String>(0).unwrap(), "wow".to_owned());
+    assert_eq!(rows[1].get::<String>(0).unwrap(), "\"wow\"".to_owned());
     assert_eq!(rows[2].count(), 4);
     assert_eq!(rows[2].get::<String>(0).unwrap(), "b\"d".to_owned());
 }
