@@ -49,7 +49,7 @@ use std::{
     borrow::BorrowMut,
     error::Error,
     fmt::{self, Debug, Display},
-    io::{self, BufReader},
+    io::{self, BufReader, BufWriter, Write},
     path::Path,
 };
 
@@ -88,6 +88,12 @@ impl Display for CsvError<'_> {
             }
             CsvError::FileError => write!(f, "Error accessing file."),
         }
+    }
+}
+
+impl From<io::Error> for CsvError<'_> {
+    fn from(_: io::Error) -> Self {
+        CsvError::FileError
     }
 }
 
@@ -300,26 +306,25 @@ impl Index<usize> for Record {
 
 impl std::fmt::Display for Record {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut record = String::new();
-        let last_index = self.inner.len().saturating_sub(1);
+        let last_index = self.ranges.len().saturating_sub(1);
         for (index, field) in self.iter().enumerate() {
             let field_value = field.to_string().map_err(|_| std::fmt::Error)?;
 
             // escape every single quote. This assumes what's present in each field
             // is what the user wants in it, no need for the user to escape things for us
-            let mut field_value = field_value.replace('\"', "\"\"");
+            let field_value = field_value.replace('\"', "\"\"");
 
             // If we have quotes or commas, then we need outer double quotes in this field
             if field_value.contains(self.delim) || field_value.contains(QUOTE as char) {
-                field_value = format!("\"{field_value}\"");
+                write!(f, "\"{field_value}\"")?;
             }
             if index != last_index {
-                record.push_str(&format!("{}{}", field_value, self.delim));
+                write!(f, "{}{}", field_value, self.delim)?;
             } else {
-                record.push_str(&field_value);
+                write!(f, "{}", &field_value)?;
             }
         }
-        write!(f, "{}", record)
+        Ok(())
     }
 }
 
@@ -649,9 +654,10 @@ fn read_fields(
 }
 
 /// A CSV Writer implementation. Write to files or standard output.
-pub struct Writer<R> {
-    writer: R,
+pub struct Writer<R: io::Write> {
+    writer: BufWriter<R>,
     delimiter: Option<char>,
+    // record: Vec<u8>,
 }
 
 impl Writer<std::fs::File> {
@@ -668,8 +674,11 @@ impl Writer<std::fs::File> {
     /// # Error
     /// If the underlying file behind path is not accessible for any reason.
     pub fn from_path(path: impl AsRef<Path>) -> Result<Self> {
-        let file = std::fs::File::create(path).map_err(|_| CsvError::FileError)?;
-        Ok(Self::from_writer(file))
+        let writer = BufWriter::new(std::fs::File::create(path).map_err(|_| CsvError::FileError)?);
+        Ok(Self {
+            writer,
+            delimiter: None,
+        })
     }
 }
 
@@ -680,8 +689,9 @@ impl<R: io::Write + Sized> Writer<R> {
     /// `writer` std::io::Write implementation to write to
     pub fn from_writer(writer: R) -> Self {
         Self {
-            writer,
+            writer: BufWriter::new(writer),
             delimiter: None,
+            // record: Vec::new(),
         }
     }
 
@@ -698,11 +708,50 @@ impl<R: io::Write + Sized> Writer<R> {
     /// # Arguments:
     /// `record` CSV record to be written.
     pub fn write(&mut self, record: &Record) -> Result<()> {
-        let mut record = record.clone();
-        if let Some(delimiter) = self.delimiter.as_ref() {
-            record.delim = *delimiter;
+        let delimiter = match self.delimiter {
+            Some(delim) => delim as u8,
+            _ => record.delim as u8,
+        };
+
+        // Since we now write behind a buffered writer, we can write single characters without much penalty
+        // May not be pretty but it helps a lot in performance
+        for (index, (start, end)) in record.ranges.iter().enumerate() {
+            // To avoid slow allocation and string formatting, we escape fields manually
+            let field = &record.inner[*start..*end];
+
+            if field.contains(&QUOTE) {
+                println!(
+                    "We got some quotes in here: {}",
+                    String::from_utf8_lossy(field)
+                );
+                // When we have quotes, we escape each quote and put quotes around the field itself
+                self.writer.write_all(&[QUOTE])?;
+                for byte in field {
+                    if byte == &QUOTE {
+                        // escape the quote!
+                        self.writer.write_all(&[*byte, QUOTE])?;
+                    } else {
+                        self.writer.write_all(&[*byte])?;
+                    }
+                }
+                self.writer.write_all(&[QUOTE])?;
+            } else if field.contains(&delimiter) {
+                // If the delimiter is part of the field, then let's escape the field
+                self.writer.write_all(&[QUOTE])?;
+                self.writer.write_all(field)?;
+                self.writer.write_all(&[QUOTE])?;
+            } else {
+                self.writer.write_all(field)?;
+            }
+
+            if index != record.ranges.len() - 1 {
+                // We only add the delimiter at the end of the each field except for the last
+                self.writer.write_all(&[delimiter])?;
+            }
         }
-        writeln!(self.writer, "{}", record).map_err(|_| CsvError::InvalidString)
+        self.writer.write_all(&[CR, LF])?;
+
+        Ok(())
     }
 
     /// Convenient method to write several [`Record`]s at once.
