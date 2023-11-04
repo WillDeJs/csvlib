@@ -1,4 +1,4 @@
-use csvlib::Reader;
+use csvlib::reader::Reader;
 
 #[test]
 fn test_well_formed_csv_no_commas_no_quotes() {
