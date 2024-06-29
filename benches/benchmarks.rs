@@ -6,8 +6,8 @@ fn million_records() {
     // Date,Open,High,Low,Close,Adj Close,Volume
     let mut total: f64 = 0.0;
     let mut count = 0;
-    for record in reader.entries() {
-        total += record.get::<f64>(1).unwrap();
+    for row in reader.entries() {
+        total += row.get::<f64>(1).unwrap();
         count += 1;
     }
 
@@ -21,7 +21,7 @@ fn million_records() {
 fn criterion_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("CSV Performance");
     group.significance_level(0.1).sample_size(10);
-    group.bench_function("1 Million records", |b| b.iter(million_records));
+    group.bench_function("1 Million rows", |b| b.iter(million_records));
     group.finish();
 }
 criterion_group!(benches, criterion_benchmark);

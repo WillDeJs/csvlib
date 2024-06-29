@@ -1,4 +1,4 @@
-//! Simple CSV Reader. Offers the ability to parse CSV records from files.
+//! Simple CSV Reader. Offers the ability to parse CSV rows from files.
 //! This implementation is done for educational purposes to be used in personal
 //! projects.
 //!
@@ -26,7 +26,7 @@ use crate::*;
 #[derive(Debug)]
 pub struct Reader<R> {
     reader: BufReader<R>,
-    header: Option<Record>,
+    header: Option<Row>,
     has_header: bool,
     delimiter: Option<char>,
 }
@@ -47,7 +47,7 @@ where
     }
 
     /// Retrieves the headers for this reader
-    pub fn headers(&self) -> Option<Record> {
+    pub fn headers(&self) -> Option<Row> {
         self.header.clone()
     }
 }
@@ -106,7 +106,7 @@ impl FromStr for Reader<std::io::Cursor<String>> {
 /// A CSV Reader builder that allows to read CSV data from files and other steams.
 pub struct ReaderBuilder<R> {
     reader: Option<R>,
-    header: Option<Record>,
+    header: Option<Row>,
     has_header: bool,
     delimiter: Option<char>,
 }
@@ -203,7 +203,7 @@ where
     }
 }
 
-/// Iterator of Reader entries ([`Record`]s).
+/// Iterator of Reader entries ([`row`]s).
 ///
 /// # Examples:
 /// ```no_run
@@ -240,7 +240,7 @@ impl<R: io::Read> Entries<R> {
 }
 
 impl<R: io::Read> Iterator for Entries<R> {
-    type Item = Record;
+    type Item = Row;
 
     fn next(&mut self) -> Option<Self::Item> {
         let delimiter = match self.owner.delimiter {
@@ -268,8 +268,8 @@ fn read_fields(
     separator: char,
     field_buffer: &mut Vec<u8>,
     line_buffer: &mut Vec<u8>,
-) -> Result<Record> {
-    let mut record = Record::with_capacity(line_buffer.capacity());
+) -> Result<Row> {
+    let mut row = Row::with_capacity(line_buffer.capacity());
     let mut multi_line = true;
     let mut quote_first_char = false;
 
@@ -303,7 +303,7 @@ fn read_fields(
                     } else if current_char == separator as u8 {
                         if !escaping {
                             quote_first_char = false;
-                            record.add(field_buffer);
+                            row.add(field_buffer);
                             field_buffer.clear();
                             quote_count = 0;
                             continue;
@@ -314,9 +314,9 @@ fn read_fields(
                         }
                     } else if current_char == CR {
                         if !escaping {
-                            record.add(field_buffer);
+                            row.add(field_buffer);
                             field_buffer.clear();
-                            return Ok(record);
+                            return Ok(row);
                         } else {
                             multi_line = true;
                         }
@@ -327,7 +327,7 @@ fn read_fields(
 
                 // got to the end and but did not find  a carriage return
                 if !field_buffer.is_empty() {
-                    record.add(field_buffer);
+                    row.add(field_buffer);
                     field_buffer.clear();
                 }
             }
@@ -335,5 +335,5 @@ fn read_fields(
         }
     }
 
-    Ok(record)
+    Ok(row)
 }

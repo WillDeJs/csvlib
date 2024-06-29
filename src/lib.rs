@@ -8,7 +8,7 @@
 //! // Write to file
 //! let mut writer = csvlib::Writer::from_writer(std::fs::File::create("./test.txt").unwrap());
 //!
-//! // Create custom records
+//! // Create custom rows
 //! let header = csvlib::csv!["Header1", "Header 2", "Header,3"];
 //! writer.write(&header).unwrap();
 //! writer
@@ -24,14 +24,14 @@
 //!```
 //! # Example (Reader):
 //! ```no_run
-//!     // create custom records
-//!     let record = csvlib::csv!["Intr,o", 34, "klk", "manito"];
+//!     // create custom rows
+//!     let row = csvlib::csv!["Intr,o", 34, "klk", "manito"];
 //!
-//!     // Parse record fields
-//!     println!("Got: {}", record.get::<u32>(1).unwrap());
-//!     println!("{}", record);
+//!     // Parse row fields
+//!     println!("Got: {}", row.get::<u32>(1).unwrap());
+//!     println!("{}", row);
 //!
-//!     // Iterate through records
+//!     // Iterate through rows
 //!     let mut csv_reader = csvlib::Reader::from_path("./TSLA.csv")
 //!         .unwrap();
 //!
@@ -52,9 +52,11 @@ use std::{
     io::{self},
 };
 
+pub mod doc;
 pub mod reader;
 pub mod writer;
 
+pub use doc::Document;
 pub use reader::Reader;
 pub use writer::Writer;
 
@@ -141,17 +143,17 @@ impl std::fmt::Display for Field {
     }
 }
 
-/// A CSV Record which may contain several CSV Fields
+/// A CSV row which may contain several CSV Fields
 ///
 /// See [`Field`]
 #[derive(Debug, Clone, PartialEq)]
-pub struct Record {
+pub struct Row {
     inner: Vec<u8>,
     ranges: Vec<(usize, usize)>,
     delim: char,
 }
 
-impl Default for Record {
+impl Default for Row {
     fn default() -> Self {
         Self {
             inner: Vec::new(),
@@ -160,18 +162,18 @@ impl Default for Record {
         }
     }
 }
-impl Record {
-    /// Construct a simple empty CSV Record
+impl Row {
+    /// Construct a simple empty CSV row
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Initialize a record with an allocated capacity of fields.
+    /// Initialize a row with an allocated capacity of fields.
     ///
     /// Useful to avoid multiple allocations.
     ///
     /// # Arguments
-    /// `size`  Number of headers in the record.
+    /// `size`  Number of headers in the row.
     pub fn with_capacity(size: usize) -> Self {
         Self {
             inner: Vec::with_capacity(size),
@@ -180,7 +182,7 @@ impl Record {
         }
     }
 
-    /// Set the record's delimiter
+    /// Set the row's delimiter
     ///
     /// Default delimiter is a comma '.'.
     pub fn delimiter(&mut self, delim: char) {
@@ -209,12 +211,12 @@ impl Record {
     ///
     pub fn iter(&self) -> FieldsIter {
         FieldsIter {
-            record: self,
+            row: self,
             index: 0,
         }
     }
 
-    /// Adds a [`Field`] to the record.
+    /// Adds a [`Field`] to the row.
     ///
     /// # Arguments:
     /// `field` A Field of any type that implements [`std::fmt::Display`]
@@ -228,18 +230,18 @@ impl Record {
     /// Attempts to retrieve and cast a field to a given type.
     ///
     /// # Arguments
-    /// `index` the index of the Field inside the record
+    /// `index` the index of the Field inside the row
     ///
     /// # Returns
     /// A result with either the casted field to type T or an error.
     ///
     /// # Examples:
     /// ```
-    /// let record = csvlib::csv!["This is a record", 25, 56.2];
+    /// let row = csvlib::csv!["This is a row", 25, 56.2];
     ///
-    /// assert_eq!(record.get::<String>(0).unwrap(), "This is a record".to_string());
-    /// assert_eq!(record.get::<u32>(1).unwrap(), 25);
-    /// assert_eq!(record.get::<f64>(2).unwrap(), 56.2);
+    /// assert_eq!(row.get::<String>(0).unwrap(), "This is a row".to_string());
+    /// assert_eq!(row.get::<u32>(1).unwrap(), 25);
+    /// assert_eq!(row.get::<f64>(2).unwrap(), 56.2);
     /// ```
     pub fn get<T: std::str::FromStr>(&self, index: usize) -> Result<T> {
         match self.ranges.get(index) {
@@ -258,13 +260,31 @@ impl Record {
         }
     }
 
-    /// Retrieves the number of [`Field`]s in the record
+    /// Retrieves the number of [`Field`]s in the row
     pub fn count(&self) -> usize {
         self.ranges.len()
     }
 }
+impl From<&[&str]> for Row {
+    fn from(fields: &[&str]) -> Self {
+        let mut row = Row::new();
+        for field in fields {
+            row.add(field.as_bytes());
+        }
+        row
+    }
+}
+impl From<&[&String]> for Row {
+    fn from(fields: &[&String]) -> Self {
+        let mut row = Row::new();
+        for field in fields {
+            row.add(field.as_bytes());
+        }
+        row
+    }
+}
 
-impl Index<usize> for Record {
+impl Index<usize> for Row {
     type Output = [u8];
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -272,7 +292,7 @@ impl Index<usize> for Record {
     }
 }
 
-impl std::fmt::Display for Record {
+impl std::fmt::Display for Row {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let last_index = self.ranges.len().saturating_sub(1);
         for (index, field) in self.iter().enumerate() {
@@ -297,7 +317,7 @@ impl std::fmt::Display for Record {
 }
 
 pub struct FieldsIter<'a> {
-    record: &'a Record,
+    row: &'a Row,
     index: usize,
 }
 
@@ -306,11 +326,11 @@ impl Iterator for FieldsIter<'_> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.index += 1;
-        self.record.get(self.index - 1).ok()
+        self.row.get(self.index - 1).ok()
     }
 }
 
-/// Create a CSV [`Record`] from a several CSV [`Field`]s.
+/// Create a CSV [`row`] from a several CSV [`Field`]s.
 /// Defaults to separator comma (',').
 ///
 /// # Examples:
@@ -325,9 +345,9 @@ impl Iterator for FieldsIter<'_> {
 macro_rules! csv {
     ($($e:expr),*) => {
         {
-            let mut record = $crate::Record::new();
-            $(record.add(&format!("{}",$e).as_bytes());)*
-            record
+            let mut row = $crate::Row::new();
+            $(row.add(&format!("{}",$e).as_bytes());)*
+            row
         }
     };
 }
@@ -341,12 +361,16 @@ pub enum CsvError<'a> {
     FieldParseError(&'a str),
     NotAField(usize),
     FileError,
+    InvalidColumn(&'a str),
+    InvalidRow(usize),
+    InvalidColumnIndex(usize),
+    Generic(&'a str),
 }
 
 impl Display for CsvError<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            CsvError::RecordError => write!(f, "Error reading CSV record"),
+            CsvError::RecordError => write!(f, "Error reading CSV row"),
             CsvError::ReadError => write!(f, "Error reading from source."),
             CsvError::ConversionError(index, type_name) => {
                 write!(f, "Error converting field `{index}` to type `{type_name}`")
@@ -357,6 +381,16 @@ impl Display for CsvError<'_> {
                 write!(f, "Error parsing field to `{type_name}`.")
             }
             CsvError::FileError => write!(f, "Error accessing file."),
+            CsvError::InvalidColumn(column) => {
+                write!(f, "Invalid Column: `{column}`. Not found in document.")
+            }
+            CsvError::InvalidColumnIndex(column) => {
+                write!(f, "Invalid Column: `{column}`. Not found in document.")
+            }
+            CsvError::InvalidRow(row) => {
+                write!(f, "Invalid Row: `{row}`. Not found in document.")
+            }
+            CsvError::Generic(msg) => write!(f, "{msg}"),
         }
     }
 }

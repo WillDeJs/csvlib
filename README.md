@@ -6,7 +6,7 @@ fn main() {
   // Write to file
     let mut writer = csvlib::Writer::from_path("./test.txt").unwrap();
 
-    // Create custom records
+    // Create custom rows
     let header = csvlib::csv!["Header1", "Header 2", "Header,3"];
     writer.write(&header).unwrap();
     writer
