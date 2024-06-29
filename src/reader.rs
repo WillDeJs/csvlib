@@ -303,7 +303,7 @@ fn read_fields(
                     } else if current_char == separator as u8 {
                         if !escaping {
                             quote_first_char = false;
-                            row.add(field_buffer);
+                            row.add_bytes(field_buffer);
                             field_buffer.clear();
                             quote_count = 0;
                             continue;
@@ -314,7 +314,7 @@ fn read_fields(
                         }
                     } else if current_char == CR {
                         if !escaping {
-                            row.add(field_buffer);
+                            row.add_bytes(field_buffer);
                             field_buffer.clear();
                             return Ok(row);
                         } else {
@@ -327,7 +327,7 @@ fn read_fields(
 
                 // got to the end and but did not find  a carriage return
                 if !field_buffer.is_empty() {
-                    row.add(field_buffer);
+                    row.add_bytes(field_buffer);
                     field_buffer.clear();
                 }
             }

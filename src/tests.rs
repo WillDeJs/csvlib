@@ -1,4 +1,4 @@
-use csvlib::reader::Reader;
+use csvlib::{reader::Reader, Row};
 
 #[test]
 fn test_well_formed_csv_no_commas_no_quotes() {
@@ -66,4 +66,31 @@ fn test_well_formed_csv_with_quoted_strings() {
     assert_eq!(rows[1].get::<String>(0).unwrap(), "\"wow\"".to_owned());
     assert_eq!(rows[2].count(), 4);
     assert_eq!(rows[2].get::<String>(0).unwrap(), "b\"d".to_owned());
+}
+
+#[test]
+fn test_csv_row_remove() {
+    let mut row = Row::from(&["Hi", "there", "partner."][..]);
+    assert_eq!(row.get::<String>(0).unwrap(), "Hi");
+    assert_eq!(row.get::<String>(1).unwrap(), "there");
+    assert_eq!(row.get::<String>(2).unwrap(), "partner.");
+
+    // Now remove item
+    row.remove(1);
+    assert_eq!(row.get::<String>(0).unwrap(), "Hi");
+    assert_eq!(row.get::<String>(1).unwrap(), "partner.");
+}
+
+#[test]
+fn test_csv_row_replace() {
+    let mut row = Row::from(&["Hi", "there", "partner."][..]);
+    assert_eq!(row.get::<String>(0).unwrap(), "Hi");
+    assert_eq!(row.get::<String>(1).unwrap(), "there");
+    assert_eq!(row.get::<String>(2).unwrap(), "partner.");
+
+    // Now remove item
+    row.replace(1, "nameless person");
+    assert_eq!(row.get::<String>(0).unwrap(), "Hi");
+    assert_eq!(row.get::<String>(1).unwrap(), "nameless person");
+    assert_eq!(row.get::<String>(2).unwrap(), "partner.");
 }

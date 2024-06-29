@@ -216,15 +216,74 @@ impl Row {
         }
     }
 
-    /// Adds a [`Field`] to the row.
+    /// Adds a  from a byte slice to the row.
     ///
     /// # Arguments:
-    /// `field` A Field of any type that implements [`std::fmt::Display`]
-    pub fn add(&mut self, field: &[u8]) {
+    /// `field` A slice of bytes that can be turned into a string
+    pub fn add_bytes(&mut self, field: &[u8]) {
         let start = self.inner.len();
         let length = field.len();
         self.ranges.push((start, start + length));
         self.inner.extend_from_slice(field)
+    }
+
+    /// Adds a [`Field`] to the  to the row.
+    /// Type conversion is done behind the scines to turn the field into a string.
+    /// Thus the field is required to impl the [`Display``] trait.
+    ///
+    /// # Arguments
+    /// `field` value being added to the row.
+    pub fn add<T>(&mut self, field: T)
+    where
+        T: Sized + Display,
+    {
+        let string_value = format!("{field}");
+        self.add_bytes(string_value.as_bytes());
+    }
+
+    /// Remove a [`Field`] from the row.
+    ///
+    /// # Arguments:
+    /// `index` index of the field within the row
+    pub fn remove(&mut self, index: usize) {
+        if index >= self.ranges.len() {
+            return;
+        }
+        // can unwrap because we checked length
+        let (start, end) = self.ranges.get(index).unwrap();
+        let start = *start;
+        let end = *end;
+
+        // Move the ranges back by the same amount of bytes that are being removed
+        for (i, range) in self.ranges.iter_mut().enumerate() {
+            if i > index {
+                range.0 -= end - start;
+                range.1 -= end - start;
+            }
+        }
+
+        // Now remove the bytes and the range
+        self.inner.drain(start..end);
+        self.ranges.remove(index);
+    }
+
+    pub fn replace<T>(&mut self, index: usize, new_field: T)
+    where
+        T: Sized + Display,
+    {
+        if index >= self.ranges.len() {
+            return;
+        }
+
+        let mut row = Row::new();
+        for (i, field) in self.iter().enumerate() {
+            if i == index {
+                row.add(&new_field);
+                continue;
+            }
+            row.add_bytes(field.as_bytes());
+        }
+        std::mem::swap(self, &mut row)
     }
 
     /// Attempts to retrieve and cast a field to a given type.
@@ -269,7 +328,7 @@ impl From<&[&str]> for Row {
     fn from(fields: &[&str]) -> Self {
         let mut row = Row::new();
         for field in fields {
-            row.add(field.as_bytes());
+            row.add_bytes(field.as_bytes());
         }
         row
     }
@@ -278,7 +337,7 @@ impl From<&[&String]> for Row {
     fn from(fields: &[&String]) -> Self {
         let mut row = Row::new();
         for field in fields {
-            row.add(field.as_bytes());
+            row.add_bytes(field.as_bytes());
         }
         row
     }
@@ -346,13 +405,13 @@ macro_rules! csv {
     ($($e:expr),*) => {
         {
             let mut row = $crate::Row::new();
-            $(row.add(&format!("{}",$e).as_bytes());)*
+            $(row.add_bytes(&format!("{}",$e).as_bytes());)*
             row
         }
     };
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum CsvError<'a> {
     RecordError,
     ReadError,
