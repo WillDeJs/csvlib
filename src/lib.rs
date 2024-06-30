@@ -66,7 +66,7 @@ const QUOTE: u8 = b'"';
 const DEFAULT_DELIM: char = ',';
 
 /// Generic Error type for internal use.
-pub type Result<T> = std::result::Result<T, CsvError<'static>>;
+pub type Result<T> = std::result::Result<T, CsvError>;
 
 /// A simple CSV Field container
 ///
@@ -120,12 +120,12 @@ impl Field {
     pub fn cast<T: FromStr>(&self) -> Result<T> {
         self.to_string()?
             .parse::<T>()
-            .map_err(|_| CsvError::FieldParseError(type_name::<T>()))
+            .map_err(|_| CsvError::FieldParseError(type_name::<T>().to_string()))
     }
 }
 
 impl FromStr for Field {
-    type Err = CsvError<'static>;
+    type Err = CsvError;
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         Ok(Field::new(s.as_bytes()))
@@ -307,7 +307,7 @@ impl Row {
             Some((start, end)) => Ok(String::from_utf8_lossy(&self.inner[*start..*end])
                 .borrow_mut()
                 .parse::<T>()
-                .map_err(|_| CsvError::ConversionError(index, type_name::<T>()))?),
+                .map_err(|_| CsvError::ConversionError(index, type_name::<T>().to_string()))?),
             _ => Err(CsvError::NotAField(index)),
         }
     }
@@ -412,21 +412,21 @@ macro_rules! csv {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum CsvError<'a> {
+pub enum CsvError {
     RecordError,
     ReadError,
-    ConversionError(usize, &'a str),
+    ConversionError(usize, String),
     InvalidString,
-    FieldParseError(&'a str),
+    FieldParseError(String),
     NotAField(usize),
     FileError,
-    InvalidColumn(&'a str),
+    InvalidColumn(String),
     InvalidRow(usize),
     InvalidColumnIndex(usize),
-    Generic(&'a str),
+    Generic(String),
 }
 
-impl Display for CsvError<'_> {
+impl Display for CsvError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             CsvError::RecordError => write!(f, "Error reading CSV row"),
@@ -454,10 +454,10 @@ impl Display for CsvError<'_> {
     }
 }
 
-impl From<io::Error> for CsvError<'_> {
+impl From<io::Error> for CsvError {
     fn from(_: io::Error) -> Self {
         CsvError::FileError
     }
 }
 
-impl Error for CsvError<'_> {}
+impl Error for CsvError {}

@@ -7,6 +7,25 @@ use std::{collections::HashMap, fmt::Display, fs::File, path::Path, slice::Iter,
 /// As this structure lives in memory, beware not to overload RAM usage with large files.
 /// For large files use regular lower level Writer/Reader structures.
 ///
+/// # Example
+/// ```rust
+/// use csvlib::Document;
+/// let mut doc = Document::with_headers(&["Name", "Age", "Email", "School"]);
+/// doc.add_row(csvlib::csv![
+///     "Mike",
+///     15,
+///     "kime@mail.com",
+///     "Marktown High School"
+/// ]);
+/// doc.add_row(csvlib::csv![
+///     "Jenny",
+///     16,
+///     "jeng@mail.com",
+///     "Marktown High School"
+/// ]);
+/// doc.write_to_file("malist.csv")
+///     .expect("Error writing to file");
+/// ```
 ///
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Document {
@@ -41,6 +60,18 @@ impl Document {
     /// # Errors
     /// If file cannot be accessible or does not exist.
     /// If file is not valid CSV and cannot be parsed.
+    ///
+    /// # Example:
+    /// ```rust
+    /// use csvlib::Document;
+    /// let doc = Document::from_path("filename.csv").expect("Could not open file");
+    ///
+    /// // Filter some column values
+    /// let ages = doc.get_column::<i32>("Age").unwrap();
+    /// let emails = doc.get_column::<String>(&String::from("Email")).unwrap();
+    /// let schools = doc.get_column::<String>("School").unwrap();
+    ///
+    /// ```
     pub fn from_path(path: impl AsRef<Path>) -> Result<Self> {
         let reader = Reader::from_path(path)?;
         Document::try_from(reader)
@@ -86,11 +117,23 @@ impl Document {
     /// # Errors
     /// If the given column name does not exist in the document
     /// or if the data cannot properly be parsed into the type T.
-    pub fn get_column<T: std::str::FromStr>(&self, col_name: &'static str) -> Result<Vec<T>> {
+    ///
+    /// # Example:
+    /// ```rust
+    /// use csvlib::Document;
+    /// let doc = Document::from_path("filename.csv").expect("Could not open file");
+    ///
+    /// // Filter some column values
+    /// let ages = doc.get_column::<i32>("Age").unwrap();
+    /// let emails = doc.get_column::<String>(&String::from("Email")).unwrap();
+    /// let schools = doc.get_column::<String>("School").unwrap();
+    ///
+    /// ```
+    pub fn get_column<T: std::str::FromStr>(&self, col_name: &str) -> Result<Vec<T>> {
         if let Some(index) = self.header_indexes.get(col_name) {
             self.get_column_by_index(*index)
         } else {
-            Err(CsvError::InvalidColumn(col_name))
+            Err(CsvError::InvalidColumn(col_name.to_string()))
         }
     }
 
@@ -136,11 +179,11 @@ impl Document {
     /// # Errors
     /// If the given column name or row index does not exist.
     /// or if the data cannot properly be parsed into the type T.
-    pub fn get_value<T: std::str::FromStr>(&self, row: usize, col_name: &'static str) -> Result<T> {
+    pub fn get_value<T: std::str::FromStr>(&self, row: usize, col_name: &str) -> Result<T> {
         if let Some(col_index) = self.header_indexes.get(col_name) {
             self.get_value_at::<T>(row, *col_index)
         } else {
-            Err(CsvError::InvalidColumn(col_name))
+            Err(CsvError::InvalidColumn(col_name.to_string()))
         }
     }
 
@@ -264,6 +307,26 @@ impl Document {
     ///
     /// # Errors
     /// If writing to file fails for IO related reasons.
+    ///
+    /// # Example
+    /// ```rust
+    /// use csvlib::Document;
+    /// let mut doc = Document::with_headers(&["Name", "Age", "Email", "School"]);
+    /// doc.add_row(csvlib::csv![
+    ///     "Mike",
+    ///     15,
+    ///     "kime@mail.com",
+    ///     "Marktown High School"
+    /// ]);
+    /// doc.add_row(csvlib::csv![
+    ///     "Jenny",
+    ///     16,
+    ///     "jeng@mail.com",
+    ///     "Marktown High School"
+    /// ]);
+    /// doc.write_to_file("malist.csv")
+    ///     .expect("Error writing to file");
+    /// ``````
     pub fn write_to_file(&self, path: impl AsRef<Path>) -> Result<()> {
         let mut writer = Writer::from_path(path)?;
         writer.write(&self.get_headers_row())?;
@@ -275,16 +338,16 @@ impl Document {
 }
 
 impl TryFrom<Reader<File>> for Document {
-    type Error = CsvError<'static>;
+    type Error = CsvError;
     fn try_from(reader: Reader<File>) -> Result<Self> {
         let headers = reader.headers();
         let rows = reader.entries().collect();
         let mut header_indexes = HashMap::new();
         if let Some(header) = &headers {
             for (index, value) in header.iter().enumerate() {
-                let header_string_value = value
-                    .to_string()
-                    .map_err(|_| CsvError::ConversionError(index, "String"))?;
+                let header_string_value = value.to_string().map_err(|_| {
+                    CsvError::ConversionError(index, std::any::type_name::<String>().to_owned())
+                })?;
                 header_indexes.insert(header_string_value, index);
             }
         }

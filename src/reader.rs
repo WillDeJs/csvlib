@@ -82,7 +82,7 @@ impl Reader<std::fs::File> {
 }
 
 impl FromStr for Reader<std::io::Cursor<String>> {
-    type Err = CsvError<'static>;
+    type Err = CsvError;
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         let cursor = std::io::Cursor::new(s.to_owned());
