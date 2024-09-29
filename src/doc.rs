@@ -62,7 +62,7 @@ impl Document {
     /// If file is not valid CSV and cannot be parsed.
     ///
     /// # Example:
-    /// ```rust
+    /// ```no_run
     /// use csvlib::Document;
     /// let doc = Document::from_path("filename.csv").expect("Could not open file");
     ///
@@ -119,7 +119,7 @@ impl Document {
     /// or if the data cannot properly be parsed into the type T.
     ///
     /// # Example:
-    /// ```rust
+    /// ```no_run
     /// use csvlib::Document;
     /// let doc = Document::from_path("filename.csv").expect("Could not open file");
     ///
