@@ -199,7 +199,7 @@ impl Document {
     /// # Arguments
     /// `col_name`  Name of the column to match.
     /// `value`     Value to match in each row.
-    pub fn get_rows_where<T>(&self, col_name: &'static str, value: &T) -> Vec<&Row>
+    pub fn get_rows_where<T>(&self, col_name: &str, value: &T) -> Vec<&Row>
     where
         T: Sized + Display + PartialEq + FromStr,
     {
@@ -276,7 +276,7 @@ impl Document {
     ///
     /// # Arguments
     /// `column`    column name to search
-    pub fn is_valid_column(&self, column: &'static str) -> bool {
+    pub fn is_valid_column(&self, column: &str) -> bool {
         self.header_indexes.contains_key(column)
     }
 
@@ -308,7 +308,7 @@ impl Document {
     /// # Errors
     /// If the given column name or row index does not exist.
     /// or if the data cannot properly be parsed into the type T.
-    pub fn set_value<T: std::str::FromStr>(&mut self, row: usize, col_name: &'static str, value: T)
+    pub fn set_value<T: std::str::FromStr>(&mut self, row: usize, col_name: &str, value: T)
     where
         T: Sized + Display,
     {
@@ -448,7 +448,7 @@ impl<'a> DocEntryMut<'a> {
     /// # Errors
     /// If the given column name or row index does not exist.
     /// or if the data cannot properly be parsed into the type T.
-    pub fn set_value<T: std::str::FromStr>(&mut self, col_name: &'static str, value: T)
+    pub fn set_value<T: std::str::FromStr>(&mut self, col_name: &str, value: T)
     where
         T: Sized + Display,
     {
