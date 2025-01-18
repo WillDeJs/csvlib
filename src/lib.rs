@@ -460,4 +460,10 @@ impl From<io::Error> for CsvError {
     }
 }
 
+impl From<CsvError> for String {
+    fn from(value: CsvError) -> Self {
+        value.to_string()
+    }
+}
+
 impl Error for CsvError {}

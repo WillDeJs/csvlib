@@ -1,5 +1,12 @@
 use crate::{CsvError, Reader, Result, Row, Writer};
-use std::{collections::HashMap, fmt::Display, fs::File, path::Path, slice::Iter, str::FromStr};
+use std::{
+    collections::HashMap,
+    fmt::Display,
+    fs::File,
+    path::Path,
+    slice::{Iter, IterMut},
+    str::FromStr,
+};
 
 /// Simple document structure. This is merely an in-memory wrapper around a set of CSV Rows.
 /// It offers functions to retrieve and write data as well as a way to serialize to a file.
@@ -230,8 +237,18 @@ impl Document {
     }
 
     /// Get an iterator to all the rows in the document
-    pub fn rows(&self) -> Iter<Row> {
-        self.rows.iter()
+    pub fn rows<'a>(&'a self) -> DocIter<'a> {
+        DocIter {
+            header_indexes: &self.header_indexes,
+            iter: self.rows.iter(),
+        }
+    }
+    /// Get a mutable iterator to all the rows in the document
+    pub fn rows_mut<'a>(&'a mut self) -> DocIterMut<'a> {
+        DocIterMut {
+            header_indexes: &self.header_indexes,
+            iter: self.rows.iter_mut(),
+        }
     }
 
     /// Get the count of all rows in the document
@@ -239,7 +256,7 @@ impl Document {
         self.rows.len()
     }
 
-    /// Check whether the given row evists in the document
+    /// Check whether the given row exists in the document
     ///
     /// # Arguments
     /// `row`    row index to search
@@ -356,5 +373,107 @@ impl TryFrom<Reader<File>> for Document {
             rows,
             header_indexes,
         })
+    }
+}
+
+pub struct DocEntry<'a> {
+    pub(crate) row: &'a Row,
+    pub(crate) header_indexes: &'a HashMap<String, usize>,
+}
+
+impl<'a> DocEntry<'a> {
+    /// Get the value at the current row-column intersection. This time the column is given as a string.
+    ///
+    /// # Arguments
+    /// `col_name` name of the column being searched.
+    ///
+    /// # Errors
+    /// If the given column name or row index does not exist.
+    /// or if the data cannot properly be parsed into the type T.
+    pub fn get_value<T: std::str::FromStr>(&self, col_name: &str) -> Result<T> {
+        if let Some(col_index) = self.header_indexes.get(col_name) {
+            self.row.get::<T>(*col_index)
+        } else {
+            Err(CsvError::InvalidColumn(col_name.to_string()))
+        }
+    }
+}
+
+pub struct DocIter<'a> {
+    iter: Iter<'a, Row>,
+    pub(crate) header_indexes: &'a HashMap<String, usize>,
+}
+
+impl<'a> Iterator for DocIter<'a> {
+    type Item = DocEntry<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(row) = self.iter.next() {
+            Some(DocEntry {
+                row: row,
+                header_indexes: self.header_indexes,
+            })
+        } else {
+            None
+        }
+    }
+}
+pub struct DocEntryMut<'a> {
+    pub(crate) row: &'a mut Row,
+    pub(crate) header_indexes: &'a HashMap<String, usize>,
+}
+
+impl<'a> DocEntryMut<'a> {
+    /// Get the value at the current row-column intersection.
+    ///
+    /// # Arguments
+    /// `col_name` name of the column being searched.
+    ///
+    /// # Errors
+    /// If the given column name or row index does not exist.
+    /// or if the data cannot properly be parsed into the type T.
+    pub fn get_value<T: std::str::FromStr>(&self, col_name: &str) -> Result<T> {
+        if let Some(col_index) = self.header_indexes.get(col_name) {
+            self.row.get::<T>(*col_index)
+        } else {
+            Err(CsvError::InvalidColumn(col_name.to_string()))
+        }
+    }
+
+    /// Get the value at the current row-column intersection. .
+    ///
+    /// # Arguments
+    /// `col_name` name of the column being searched.
+    ///
+    /// # Errors
+    /// If the given column name or row index does not exist.
+    /// or if the data cannot properly be parsed into the type T.
+    pub fn set_value<T: std::str::FromStr>(&mut self, col_name: &'static str, value: T)
+    where
+        T: Sized + Display,
+    {
+        if let Some(col_index) = self.header_indexes.get(col_name) {
+            self.row.replace(*col_index, value);
+        }
+    }
+}
+
+pub struct DocIterMut<'a> {
+    iter: IterMut<'a, Row>,
+    pub(crate) header_indexes: &'a HashMap<String, usize>,
+}
+
+impl<'a> Iterator for DocIterMut<'a> {
+    type Item = DocEntryMut<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(row) = self.iter.next() {
+            Some(DocEntryMut {
+                row: row,
+                header_indexes: self.header_indexes,
+            })
+        } else {
+            None
+        }
     }
 }
