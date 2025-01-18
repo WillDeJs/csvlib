@@ -69,6 +69,30 @@ fn test_well_formed_csv_with_quoted_strings() {
 }
 
 #[test]
+fn test_empty_fields() {
+    let data = r#"header1,header2,header3,header4
+,,,
+,,,
+,,,"#;
+    let input = std::io::Cursor::new(data);
+    let reader = Reader::builder()
+        .with_header(true)
+        .with_reader(input)
+        .build()
+        .expect("could not create reader.");
+
+    let rows: Vec<_> = reader.entries().collect();
+    assert_eq!(rows.len(), 3);
+    assert_eq!(rows[0].count(), 4);
+    assert!(rows[0].get::<String>(0).unwrap().is_empty());
+    assert!(rows[0].get::<String>(3).unwrap().is_empty());
+    assert_eq!(rows[1].count(), 4);
+    assert!(rows[1].get::<String>(0).unwrap().is_empty());
+    assert_eq!(rows[2].count(), 4);
+    assert!(rows[2].get::<String>(0).unwrap().is_empty());
+}
+
+#[test]
 fn test_csv_row_remove() {
     let mut row = Row::from(&["Hi", "there", "partner."][..]);
     assert_eq!(row.get::<String>(0).unwrap(), "Hi");

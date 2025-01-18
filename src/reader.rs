@@ -272,6 +272,7 @@ fn read_fields(
     let mut row = Row::with_capacity(line_buffer.capacity());
     let mut multi_line = true;
     let mut quote_first_char = false;
+    let mut current_char: u8 = 0;
 
     while multi_line {
         multi_line = false;
@@ -283,8 +284,8 @@ fn read_fields(
 
                 field_buffer.clear();
                 let mut quote_count = 0;
-                for current_char in line_buffer.iter() {
-                    let current_char = *current_char;
+                for c in line_buffer.iter() {
+                    current_char = *c;
                     if current_char == QUOTE {
                         quote_count += 1;
                         if field_buffer.is_empty() {
@@ -308,11 +309,9 @@ fn read_fields(
                             quote_count = 0;
                             continue;
                         }
-                    } else if current_char == LF {
-                        if !escaping {
-                            continue;
-                        }
                     } else if current_char == CR {
+                        continue;
+                    } else if current_char == LF {
                         if !escaping {
                             row.add_bytes(field_buffer);
                             field_buffer.clear();
@@ -326,7 +325,7 @@ fn read_fields(
                 }
 
                 // got to the end and but did not find  a carriage return
-                if !field_buffer.is_empty() {
+                if !field_buffer.is_empty() || current_char == separator as u8 {
                     row.add_bytes(field_buffer);
                     field_buffer.clear();
                 }
