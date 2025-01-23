@@ -448,7 +448,7 @@ impl<'a> DocEntryMut<'a> {
     /// # Errors
     /// If the given column name or row index does not exist.
     /// or if the data cannot properly be parsed into the type T.
-    pub fn set_value<T: std::str::FromStr>(&mut self, col_name: &str, value: T)
+    pub fn set_value<T>(&mut self, col_name: &str, value: T)
     where
         T: Sized + Display,
     {
