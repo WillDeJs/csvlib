@@ -1,4 +1,4 @@
-A simple CSV Reader/Writer library created for personal projects. Written in rust. 
+A simple CSV Reader/Writer library created for personal projects. 
  # Example (Writer):
  ``` rs
 fn main() { 
