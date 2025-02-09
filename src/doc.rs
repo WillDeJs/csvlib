@@ -17,13 +17,13 @@ use std::{
 /// ```rust
 /// use csvlib::Document;
 /// let mut doc = Document::with_headers(&["Name", "Age", "Email", "School"]);
-/// doc.add_row(csvlib::csv![
+/// doc.insert(csvlib::csv![
 ///     "Mike",
 ///     15,
 ///     "kime@mail.com",
 ///     "Marktown High School"
 /// ]);
-/// doc.add_row(csvlib::csv![
+/// doc.insert(csvlib::csv![
 ///     "Jenny",
 ///     16,
 ///     "jeng@mail.com",
@@ -92,7 +92,7 @@ impl Document {
     ///
     /// # Arguments
     /// `row` Row being inserted.
-    pub fn add_row(&mut self, row: Row) {
+    pub fn insert(&mut self, row: Row) {
         // TODO: Validate row length
         self.rows.push(row);
     }
@@ -101,7 +101,7 @@ impl Document {
     ///
     /// # Arguments
     /// `row` Row being inserted.
-    pub fn add_all(&mut self, rows: &[Row]) {
+    pub fn insert_all(&mut self, rows: &[Row]) {
         self.rows.extend_from_slice(rows);
     }
 
@@ -120,7 +120,7 @@ impl Document {
     /// # Arguments
     /// `col_name`  Name of the column to match.
     /// `value`     Value to match in each row.
-    pub fn remove_rows_where<T>(&mut self, col_name: &str, value: &T)
+    pub fn remove_where<T>(&mut self, col_name: &str, value: &T)
     where
         T: Display + PartialEq,
     {
@@ -128,6 +128,44 @@ impl Document {
             self.rows
                 .retain(|row| row.get::<String>(*column) != Ok(value.to_string()));
         }
+    }
+
+    ///  Retain all the rows in the document that match the predicate function called.
+    ///
+    /// # Arguments
+    /// `predicate`  Predicate function to test each `DocEntry` against. Used to determine match.
+    ///
+    /// # Examples:
+    ///
+    /// ```no_run
+    /// use csvlib::Document;
+    ///
+    /// fn main() {
+    ///     // Open document
+    ///     let mut document = Document::from_path(r#"students.csv"#).unwrap();
+    ///
+    ///     // Filter students from the school
+    ///     document.retain(|entry| {
+    ///         entry.get_value::<String>("School") == Ok(String::from("Springfield High School"))
+    ///     });
+    ///
+    ///     // Save filtered student list
+    ///     document.write_to_file("sprintfield_list.csv").unwrap();
+    /// }
+    /// ```
+
+    pub fn retain<F>(&mut self, predicate: F)
+    where
+        F: Fn(&DocEntry) -> bool,
+    {
+        self.rows.retain(|row| {
+            // Wrap Row into DocEntry, to allow use of headers in querying
+            let entry = DocEntry {
+                row,
+                header_indexes: &self.header_indexes,
+            };
+            predicate(&entry)
+        })
     }
 
     /// Get the given column for every row in the document.
@@ -213,7 +251,7 @@ impl Document {
     /// # Arguments
     /// `col_name`  Name of the column to match.
     /// `value`     Value to match in each row.
-    pub fn get_rows_where<T>(&self, col_name: &str, value: &T) -> Vec<&Row>
+    pub fn get_rows_where<T>(&self, col_name: &str, value: &T) -> Vec<DocEntry>
     where
         T: Sized + Display + PartialEq + FromStr,
     {
@@ -231,14 +269,18 @@ impl Document {
     /// # Arguments
     /// `column`    Index of the column to match.
     /// `value`     Value to match in each row.
-    pub fn get_rows_where_indexed<T>(&self, column: usize, value: &T) -> Vec<&Row>
+    pub fn get_rows_where_indexed<T>(&self, column: usize, value: &T) -> Vec<DocEntry>
     where
         T: Sized + Display + PartialEq + FromStr,
     {
         self.rows
             .iter()
             .filter(|row| row.get::<T>(column).as_ref() == Ok(value))
-            .collect::<Vec<&Row>>()
+            .map(|row| DocEntry {
+                row,
+                header_indexes: &self.header_indexes,
+            })
+            .collect::<Vec<DocEntry>>()
     }
 
     /// Get the header row of the document.
@@ -343,13 +385,13 @@ impl Document {
     /// ```rust
     /// use csvlib::Document;
     /// let mut doc = Document::with_headers(&["Name", "Age", "Email", "School"]);
-    /// doc.add_row(csvlib::csv![
+    /// doc.insert(csvlib::csv![
     ///     "Mike",
     ///     15,
     ///     "kime@mail.com",
     ///     "Marktown High School"
     /// ]);
-    /// doc.add_row(csvlib::csv![
+    /// doc.insert(csvlib::csv![
     ///     "Jenny",
     ///     16,
     ///     "jeng@mail.com",
