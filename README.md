@@ -7,15 +7,14 @@ fn main() {
     let mut writer = csvlib::Writer::from_path("./test.txt").unwrap();
 
     // Create custom rows
-    let header = csvlib::csv!["Header1", "Header 2", "Header,3"];
+    let header = csvlib::csv!["Header1", "Header2", "Header3"];
     writer.write(&header).unwrap();
     writer
         .write_all(&[
-            csvlib::csv!["Header1", "Header 2", "Header,3"],
-            csvlib::csv!["entry", "entry", "entry"],
-            csvlib::csv!["entry", "entry", "entry"],
-            csvlib::csv!["entry", "entry", "entry"],
-            csvlib::csv!["entry", "entry", "entry"],
+            csvlib::csv!["entry11", "entry12", "entry13"],
+            csvlib::csv!["entry21", "entry22", "entry23"],
+            csvlib::csv!["entry31", "entry32", "entry33"],
+            csvlib::csv!["entry41", "entry42", "entry43"],
         ])
         .unwrap();
 }

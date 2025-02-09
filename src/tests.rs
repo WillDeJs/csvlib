@@ -1,4 +1,4 @@
-use csvlib::{reader::Reader, Row};
+use csvlib::{reader::Reader, Document, Row};
 
 #[test]
 fn test_well_formed_csv_no_commas_no_quotes() {
@@ -117,4 +117,22 @@ fn test_csv_row_replace() {
     assert_eq!(row.get::<String>(0).unwrap(), "Hi");
     assert_eq!(row.get::<String>(1).unwrap(), "nameless person");
     assert_eq!(row.get::<String>(2).unwrap(), "partner.");
+}
+#[test]
+fn test_csv_doc_remove_row() {
+    let data = r#"header1,header2,header3,header4
+11,12,13,14
+21,22,23,24
+31,32,33,34"#;
+    let input = std::io::Cursor::new(data);
+    let csv_reader = Reader::builder()
+        .with_reader(input)
+        .with_header(true)
+        .build()
+        .expect("Creating document reader");
+    let mut doc = Document::try_from(csv_reader).expect("Converting reader into document");
+    doc.remove_rows_where("header1", &21);
+    assert_eq!(doc.get_value::<i32>(0, "header1"), Ok(11));
+    assert_eq!(doc.get_value::<i32>(1, "header1"), Ok(31));
+    assert_eq!(doc.count(), 2);
 }

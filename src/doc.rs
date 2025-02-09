@@ -2,7 +2,6 @@ use crate::{CsvError, Reader, Result, Row, Writer};
 use std::{
     collections::HashMap,
     fmt::Display,
-    fs::File,
     path::Path,
     slice::{Iter, IterMut},
     str::FromStr,
@@ -106,13 +105,28 @@ impl Document {
         self.rows.extend_from_slice(rows);
     }
 
-    /// Remove anexisting row from a document.
+    /// Remove an existing row from a document.
     ///
     /// # Arguments
     /// `row` Row index being removed.
     pub fn remove_row(&mut self, row: usize) {
         if row < self.rows.len() {
             self.rows.remove(row);
+        }
+    }
+
+    ///  Remove all the rows in the document that match the value passed in the selected column.
+    ///
+    /// # Arguments
+    /// `col_name`  Name of the column to match.
+    /// `value`     Value to match in each row.
+    pub fn remove_rows_where<T>(&mut self, col_name: &str, value: &T)
+    where
+        T: Display + PartialEq,
+    {
+        if let Some(column) = self.header_indexes.get(col_name) {
+            self.rows
+                .retain(|row| row.get::<String>(*column) != Ok(value.to_string()));
         }
     }
 
@@ -354,9 +368,12 @@ impl Document {
     }
 }
 
-impl TryFrom<Reader<File>> for Document {
+impl<T> TryFrom<Reader<T>> for Document
+where
+    T: std::io::Read,
+{
     type Error = CsvError;
-    fn try_from(reader: Reader<File>) -> Result<Self> {
+    fn try_from(reader: Reader<T>) -> Result<Self> {
         let headers = reader.headers();
         let rows = reader.entries().collect();
         let mut header_indexes = HashMap::new();
