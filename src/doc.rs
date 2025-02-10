@@ -146,7 +146,7 @@ impl Document {
     ///
     ///     // Filter students from the school
     ///     document.retain(|entry| {
-    ///         entry.get_value::<String>("School") == Ok(String::from("Springfield High School"))
+    ///         entry.get::<String>("School") == Ok(String::from("Springfield High School"))
     ///     });
     ///
     ///     // Save filtered student list
@@ -221,7 +221,7 @@ impl Document {
     /// # Errors
     /// If the given column or row index does not exist.
     /// or if the data cannot properly be parsed into the type T.
-    pub fn get_value_at<T: std::str::FromStr>(&self, row: usize, column: usize) -> Result<T> {
+    pub fn get_indexed<T: std::str::FromStr>(&self, row: usize, column: usize) -> Result<T> {
         if let Some(row) = self.rows.get(row) {
             row.get::<T>(column)
         } else {
@@ -238,9 +238,9 @@ impl Document {
     /// # Errors
     /// If the given column name or row index does not exist.
     /// or if the data cannot properly be parsed into the type T.
-    pub fn get_value<T: std::str::FromStr>(&self, row: usize, col_name: &str) -> Result<T> {
+    pub fn get<T: std::str::FromStr>(&self, row: usize, col_name: &str) -> Result<T> {
         if let Some(col_index) = self.header_indexes.get(col_name) {
-            self.get_value_at::<T>(row, *col_index)
+            self.get_indexed::<T>(row, *col_index)
         } else {
             Err(CsvError::InvalidColumn(col_name.to_string()))
         }
@@ -346,7 +346,7 @@ impl Document {
     /// # Errors
     /// If the given column or row index does not exist.
     /// or if the data cannot properly be parsed into the type T.
-    pub fn set_value_at<T>(&mut self, row: usize, column: usize, value: T)
+    pub fn set_indexed<T>(&mut self, row: usize, column: usize, value: T)
     where
         T: Sized + Display,
     {
@@ -364,12 +364,12 @@ impl Document {
     /// # Errors
     /// If the given column name or row index does not exist.
     /// or if the data cannot properly be parsed into the type T.
-    pub fn set_value<T: std::str::FromStr>(&mut self, row: usize, col_name: &str, value: T)
+    pub fn set<T: std::str::FromStr>(&mut self, row: usize, col_name: &str, value: T)
     where
         T: Sized + Display,
     {
         if let Some(col_index) = self.header_indexes.get(col_name) {
-            self.set_value_at::<T>(row, *col_index, value)
+            self.set_indexed::<T>(row, *col_index, value)
         }
     }
 
@@ -449,7 +449,7 @@ impl<'a> DocEntry<'a> {
     /// # Errors
     /// If the given column name or row index does not exist.
     /// or if the data cannot properly be parsed into the type T.
-    pub fn get_value<T: std::str::FromStr>(&self, col_name: &str) -> Result<T> {
+    pub fn get<T: std::str::FromStr>(&self, col_name: &str) -> Result<T> {
         if let Some(col_index) = self.header_indexes.get(col_name) {
             self.row.get::<T>(*col_index)
         } else {
@@ -491,7 +491,7 @@ impl<'a> DocEntryMut<'a> {
     /// # Errors
     /// If the given column name or row index does not exist.
     /// or if the data cannot properly be parsed into the type T.
-    pub fn get_value<T: std::str::FromStr>(&self, col_name: &str) -> Result<T> {
+    pub fn get<T: std::str::FromStr>(&self, col_name: &str) -> Result<T> {
         if let Some(col_index) = self.header_indexes.get(col_name) {
             self.row.get::<T>(*col_index)
         } else {
@@ -507,7 +507,7 @@ impl<'a> DocEntryMut<'a> {
     /// # Errors
     /// If the given column name or row index does not exist.
     /// or if the data cannot properly be parsed into the type T.
-    pub fn set_value<T>(&mut self, col_name: &str, value: T)
+    pub fn set<T>(&mut self, col_name: &str, value: T)
     where
         T: Sized + Display,
     {

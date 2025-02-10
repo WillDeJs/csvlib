@@ -132,7 +132,7 @@ fn test_csv_doc_remove_row() {
         .expect("Creating document reader");
     let mut doc = Document::try_from(csv_reader).expect("Converting reader into document");
     doc.remove_where("header1", &21);
-    assert_eq!(doc.get_value::<i32>(0, "header1"), Ok(11));
-    assert_eq!(doc.get_value::<i32>(1, "header1"), Ok(31));
+    assert_eq!(doc.get::<i32>(0, "header1"), Ok(11));
+    assert_eq!(doc.get::<i32>(1, "header1"), Ok(31));
     assert_eq!(doc.count(), 2);
 }
