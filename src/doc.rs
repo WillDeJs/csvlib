@@ -1,7 +1,7 @@
 use crate::{CsvError, Reader, Result, Row, Writer};
 use std::{
-    collections::HashMap,
-    fmt::Display,
+    collections::{hash_map::Keys, HashMap},
+    fmt::{Debug, Display},
     path::Path,
     slice::{Iter, IterMut},
     str::FromStr,
@@ -456,6 +456,39 @@ impl<'a> DocEntry<'a> {
             Err(CsvError::InvalidColumn(col_name.to_string()))
         }
     }
+
+    /// Get a an iterator of all the columns in this row.
+    pub fn columns(&self) -> Keys<'_, String, usize> {
+        self.header_indexes.keys()
+    }
+}
+impl Debug for DocEntry<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let last = self.header_indexes.len() - 1;
+        write!(f, "{}", "{")?;
+        for (item, (column, index)) in self.header_indexes.iter().enumerate() {
+            if item < last {
+                write!(
+                    f,
+                    "{column}: {}, ",
+                    self.row.get::<String>(*index).unwrap_or_default()
+                )?;
+            } else {
+                write!(
+                    f,
+                    "{column}: {}",
+                    self.row.get::<String>(*index).unwrap_or_default()
+                )?;
+            }
+        }
+        write!(f, "{}", "}")?;
+        Ok(())
+    }
+}
+impl Display for DocEntry<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(self.row, f)
+    }
 }
 
 pub struct DocIter<'a> {
@@ -514,6 +547,41 @@ impl<'a> DocEntryMut<'a> {
         if let Some(col_index) = self.header_indexes.get(col_name) {
             self.row.replace(*col_index, value);
         }
+    }
+
+    /// Get a an iterator of all the columns in this row.
+    pub fn columns(&mut self) -> Keys<'_, String, usize> {
+        self.header_indexes.keys()
+    }
+}
+
+impl Debug for DocEntryMut<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let last = self.header_indexes.len() - 1;
+        write!(f, "{}", "{")?;
+        for (item, (column, index)) in self.header_indexes.iter().enumerate() {
+            if item < last {
+                write!(
+                    f,
+                    "{column}: {}, ",
+                    self.row.get::<String>(*index).unwrap_or_default()
+                )?;
+            } else {
+                write!(
+                    f,
+                    "{column}: {}",
+                    self.row.get::<String>(*index).unwrap_or_default()
+                )?;
+            }
+        }
+        write!(f, "{}", "}")?;
+        Ok(())
+    }
+}
+
+impl Display for DocEntryMut<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(self.row, f)
     }
 }
 
