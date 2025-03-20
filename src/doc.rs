@@ -105,6 +105,14 @@ impl Document {
         self.rows.extend_from_slice(rows);
     }
 
+    /// Append another document.
+    ///
+    /// # Arguments
+    /// `doc` Document being appended.
+    pub fn append(&mut self, doc: &Document) {
+        self.insert_all(&doc.rows);
+    }
+
     /// Remove an existing row from a document.
     ///
     /// # Arguments
