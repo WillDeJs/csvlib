@@ -148,20 +148,18 @@ impl Document {
     /// ```no_run
     /// use csvlib::Document;
     ///
-    /// fn main() {
-    ///     // Open document
-    ///     let mut document = Document::from_path(r#"students.csv"#).unwrap();
+    /// // Open document
+    /// let mut document = Document::from_path(r#"students.csv"#).unwrap();
     ///
-    ///     // Filter students from the school
-    ///     document.retain(|entry| {
-    ///         entry.get::<String>("School") == Ok(String::from("Springfield High School"))
-    ///     });
+    /// // Filter students from the school
+    /// document.retain(|entry| {
+    ///     entry.get::<String>("School") == Ok(String::from("Springfield High School"))
+    /// });
     ///
-    ///     // Save filtered student list
-    ///     document.write_to_file("sprintfield_list.csv").unwrap();
-    /// }
+    /// // Save filtered student list
+    /// document.write_to_file("springfield_list.csv").unwrap();
+    ///
     /// ```
-
     pub fn retain<F>(&mut self, predicate: F)
     where
         F: Fn(&DocEntry) -> bool,
@@ -301,14 +299,14 @@ impl Document {
     }
 
     /// Get an iterator to all the rows in the document
-    pub fn rows<'a>(&'a self) -> DocIter<'a> {
+    pub fn rows(&self) -> DocIter<'_> {
         DocIter {
             header_indexes: &self.header_indexes,
             iter: self.rows.iter(),
         }
     }
     /// Get a mutable iterator to all the rows in the document
-    pub fn rows_mut<'a>(&'a mut self) -> DocIterMut<'a> {
+    pub fn rows_mut(&mut self) -> DocIterMut<'_> {
         DocIterMut {
             header_indexes: &self.header_indexes,
             iter: self.rows.iter_mut(),
@@ -372,9 +370,9 @@ impl Document {
     /// # Errors
     /// If the given column name or row index does not exist.
     /// or if the data cannot properly be parsed into the type T.
-    pub fn set<T: std::str::FromStr>(&mut self, row: usize, col_name: &str, value: T)
+    pub fn set<T>(&mut self, row: usize, col_name: &str, value: T)
     where
-        T: Sized + Display,
+        T: Sized + Display + std::str::FromStr,
     {
         if let Some(col_index) = self.header_indexes.get(col_name) {
             self.set_indexed::<T>(row, *col_index, value)
@@ -448,7 +446,7 @@ pub struct DocEntry<'a> {
     pub(crate) header_indexes: &'a HashMap<String, usize>,
 }
 
-impl<'a> DocEntry<'a> {
+impl DocEntry<'_> {
     /// Get the value at the current row-column intersection. This time the column is given as a string.
     ///
     /// # Arguments
@@ -473,7 +471,7 @@ impl<'a> DocEntry<'a> {
 impl Debug for DocEntry<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let last = self.header_indexes.len() - 1;
-        write!(f, "{}", "{")?;
+        write!(f, "{{")?;
         for (item, (column, index)) in self.header_indexes.iter().enumerate() {
             if item < last {
                 write!(
@@ -489,7 +487,7 @@ impl Debug for DocEntry<'_> {
                 )?;
             }
         }
-        write!(f, "{}", "}")?;
+        write!(f, "}}")?;
         Ok(())
     }
 }
@@ -510,7 +508,7 @@ impl<'a> Iterator for DocIter<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(row) = self.iter.next() {
             Some(DocEntry {
-                row: row,
+                row,
                 header_indexes: self.header_indexes,
             })
         } else {
@@ -523,7 +521,7 @@ pub struct DocEntryMut<'a> {
     pub(crate) header_indexes: &'a HashMap<String, usize>,
 }
 
-impl<'a> DocEntryMut<'a> {
+impl DocEntryMut<'_> {
     /// Get the value at the current row-column intersection.
     ///
     /// # Arguments
@@ -566,7 +564,7 @@ impl<'a> DocEntryMut<'a> {
 impl Debug for DocEntryMut<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let last = self.header_indexes.len() - 1;
-        write!(f, "{}", "{")?;
+        write!(f, "{{")?;
         for (item, (column, index)) in self.header_indexes.iter().enumerate() {
             if item < last {
                 write!(
@@ -582,7 +580,7 @@ impl Debug for DocEntryMut<'_> {
                 )?;
             }
         }
-        write!(f, "{}", "}")?;
+        write!(f, "}}")?;
         Ok(())
     }
 }
@@ -604,7 +602,7 @@ impl<'a> Iterator for DocIterMut<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(row) = self.iter.next() {
             Some(DocEntryMut {
-                row: row,
+                row,
                 header_indexes: self.header_indexes,
             })
         } else {

@@ -60,9 +60,11 @@ pub use doc::Document;
 pub use reader::Reader;
 pub use writer::Writer;
 
-const CR: u8 = b'\r';
-const LF: u8 = b'\n';
-const QUOTE: u8 = b'"';
+const CR: char = '\r';
+const LF: char = '\n';
+const QUOTE: char = '"';
+const QUOTE_BYTE: u8 = b'"';
+const NEW_LINE: [u8; 2] = [b'\r', b'\n'];
 const DEFAULT_DELIM: char = ',';
 
 /// Generic Error type for internal use.
@@ -362,7 +364,7 @@ impl std::fmt::Display for Row {
             let field_value = field_value.replace('\"', "\"\"");
 
             // If we have quotes or commas, then we need outer double quotes in this field
-            if field_value.contains(self.delim) || field_value.contains(QUOTE as char) {
+            if field_value.contains(self.delim) || field_value.contains(QUOTE) {
                 write!(f, "\"{field_value}\"")?;
             }
             if index != last_index {

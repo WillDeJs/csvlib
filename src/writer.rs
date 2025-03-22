@@ -88,9 +88,10 @@ impl<R: io::Write + Sized> Writer<R> {
     /// # Arguments:
     /// `row` CSV row to be written.
     pub fn write(&mut self, row: &Row) -> Result<()> {
+        let mut temp_utf8_buf: [u8; 4] = [0; 4];
         let delimiter = match self.delimiter {
-            Some(delim) => delim as u8,
-            _ => row.delim as u8,
+            Some(delim) => delim,
+            _ => row.delim,
         };
 
         // Since we now write behind a buffered writer, we can write single characters without much penalty
@@ -99,33 +100,47 @@ impl<R: io::Write + Sized> Writer<R> {
             // To avoid slow allocation and string formatting, we escape fields manually
             let field = &row.inner[*start..*end];
 
-            if field.contains(&QUOTE) {
+            // TODO: Find a more potentially more efficient way to handle UTF-8 characters.
+            // Using a Vec<u8> for the fields means we must build a string from them manually.
+            // However, it was a design decision that allowed less allocations and faster performance.
+            // It does not come for free, we now check for delimiters and quotes on every character when writing to a file.
+            if field.utf8_chunks().any(|c| c.valid().contains(QUOTE)) {
                 // When we have quotes, we escape each quote and put quotes around the field itself
-                self.writer.write_all(&[QUOTE])?;
-                for byte in field {
-                    if byte == &QUOTE {
-                        // escape the quote!
-                        self.writer.write_all(&[*byte, QUOTE])?;
-                    } else {
-                        self.writer.write_all(&[*byte])?;
+                self.writer.write_all(&[QUOTE_BYTE])?;
+                for chunk in field.utf8_chunks() {
+                    for current_char in chunk.valid().chars() {
+                        if current_char == QUOTE {
+                            self.writer.write_all(&[QUOTE_BYTE])?;
+                            self.writer.write_all(&[QUOTE_BYTE])?;
+                        } else {
+                            // single UTF-8 character
+                            if current_char.len_utf8() == 1 {
+                                self.writer.write_all(&[current_char as u8])?;
+                            } else {
+                                // multiple UTF-8 characters
+                                current_char.encode_utf8(&mut temp_utf8_buf);
+                                self.writer
+                                    .write_all(&temp_utf8_buf[0..current_char.len_utf8()])?;
+                            }
+                        }
                     }
                 }
-                self.writer.write_all(&[QUOTE])?;
-            } else if field.contains(&delimiter) {
+                self.writer.write_all(&[QUOTE_BYTE])?;
+            } else if field.utf8_chunks().any(|c| c.valid().contains(delimiter)) {
                 // If the delimiter is part of the field, then let's escape the field
-                self.writer.write_all(&[QUOTE])?;
+                self.writer.write_all(&[QUOTE_BYTE])?;
                 self.writer.write_all(field)?;
-                self.writer.write_all(&[QUOTE])?;
+                self.writer.write_all(&[QUOTE_BYTE])?;
             } else {
                 self.writer.write_all(field)?;
             }
 
             if index != row.ranges.len() - 1 {
                 // We only add the delimiter at the end of the each field except for the last
-                self.writer.write_all(&[delimiter])?;
+                self.writer.write_all(&[delimiter as u8])?;
             }
         }
-        self.writer.write_all(&[CR, LF])?;
+        self.writer.write_all(&NEW_LINE)?;
 
         Ok(())
     }

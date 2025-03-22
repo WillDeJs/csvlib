@@ -69,7 +69,7 @@ impl Reader<std::fs::File> {
             &mut reader,
             DEFAULT_DELIM,
             &mut Vec::with_capacity(100),
-            &mut Vec::with_capacity(100),
+            &mut String::with_capacity(100),
         )?;
 
         Ok(Reader {
@@ -91,7 +91,7 @@ impl FromStr for Reader<std::io::Cursor<String>> {
             &mut reader,
             DEFAULT_DELIM,
             &mut Vec::with_capacity(100),
-            &mut Vec::with_capacity(100),
+            &mut String::with_capacity(100),
         )?;
 
         Ok(Reader {
@@ -161,7 +161,7 @@ where
                         &mut reader,
                         delimiter,
                         &mut Vec::with_capacity(100),
-                        &mut Vec::with_capacity(100),
+                        &mut String::with_capacity(100),
                     )?);
                 }
 
@@ -225,7 +225,7 @@ where
 {
     owner: Reader<R>,
 
-    line_buffer: Vec<u8>,
+    line_buffer: String,
 
     field_buffer: Vec<u8>,
 }
@@ -233,7 +233,7 @@ impl<R: io::Read> Entries<R> {
     fn new(owner: Reader<R>) -> Self {
         Self {
             owner,
-            line_buffer: Vec::with_capacity(100),
+            line_buffer: String::with_capacity(100),
             field_buffer: Vec::with_capacity(100),
         }
     }
@@ -267,25 +267,25 @@ fn read_fields(
     reader: &mut impl io::BufRead,
     separator: char,
     field_buffer: &mut Vec<u8>,
-    line_buffer: &mut Vec<u8>,
+    line_buffer: &mut String,
 ) -> Result<Row> {
     let mut row = Row::with_capacity(line_buffer.capacity());
-    let mut multi_line = true;
     let mut quote_first_char = false;
-    let mut current_char: u8 = 0;
+    let mut multi_line = true;
+    let mut current_char: char = ' ';
 
     while multi_line {
         multi_line = false;
         line_buffer.clear();
-        match reader.read_until(b'\n', line_buffer) {
+        match reader.read_line(line_buffer) {
             Ok(0) => return Err(CsvError::RecordError),
             Ok(_n) => {
                 let mut escaping = false;
 
                 field_buffer.clear();
                 let mut quote_count = 0;
-                for c in line_buffer.iter() {
-                    current_char = *c;
+                for c in line_buffer.chars() {
+                    current_char = c;
                     if current_char == QUOTE {
                         quote_count += 1;
                         if field_buffer.is_empty() {
@@ -301,7 +301,7 @@ fn read_fields(
                             escaping = false;
                             continue;
                         }
-                    } else if current_char == separator as u8 {
+                    } else if current_char == separator {
                         if !escaping {
                             quote_first_char = false;
                             row.add_bytes(field_buffer);
@@ -320,16 +320,23 @@ fn read_fields(
                             multi_line = true;
                         }
                     }
+                    if current_char.len_utf8() == 1 {
+                        field_buffer.push(current_char as u8);
+                    } else {
+                        let mut temp_utf8_buf: [u8; 4] = [0; 4];
+                        current_char.encode_utf8(&mut temp_utf8_buf);
 
-                    field_buffer.push(current_char);
+                        field_buffer.extend_from_slice(&temp_utf8_buf[0..current_char.len_utf8()]);
+                    }
                 }
 
                 // got to the end and but did not find  a carriage return
-                if !field_buffer.is_empty() || current_char == separator as u8 {
+                if !field_buffer.is_empty() || current_char == separator {
                     row.add_bytes(field_buffer);
                     field_buffer.clear();
                 }
             }
+
             Err(_) => return Err(CsvError::ReadError),
         }
     }
