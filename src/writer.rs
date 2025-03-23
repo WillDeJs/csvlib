@@ -100,9 +100,9 @@ impl<R: io::Write + Sized> Writer<R> {
             // To avoid slow allocation and string formatting, we escape fields manually
             let field = &row.inner[*start..*end];
 
-            // TODO: Find a more potentially more efficient way to handle UTF-8 characters.
+            // Note: Not the most efficient way to handle UTF-8 characters.
             // Using a Vec<u8> for the fields means we must build a string from them manually.
-            // However, it was a design decision that allowed less allocations and faster performance.
+            // However, it was a design decision that allowed less allocations and faster performance while parsing.
             // It does not come for free, we now check for delimiters and quotes on every character when writing to a file.
             if field.utf8_chunks().any(|c| c.valid().contains(QUOTE)) {
                 // When we have quotes, we escape each quote and put quotes around the field itself
