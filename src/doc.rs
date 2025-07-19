@@ -83,6 +83,48 @@ impl Document {
         Document::try_from(reader)
     }
 
+    /// Create a document for a given path but only takes rows
+    /// according to the given filter.
+    ///
+    /// # Arguments
+    /// `path` path/string to file to be read.
+    /// `filter` filtering function to be applied to each [DocEntry]
+    ///
+    /// # Errors
+    /// If file cannot be accessible or does not exist.
+    /// If file is not valid CSV and cannot be parsed.
+    pub fn from_path_filtered<F>(path: impl AsRef<Path>, filter: F) -> Result<Self>
+    where
+        F: Fn(&DocEntry) -> bool,
+    {
+        let reader = Reader::from_path(path)?;
+        let headers = reader.headers();
+        let mut header_indexes = HashMap::new();
+        if let Some(header) = &headers {
+            for (index, value) in header.iter().enumerate() {
+                let header_string_value = value.to_string().map_err(|_| {
+                    CsvError::ConversionError(index, std::any::type_name::<String>().to_owned())
+                })?;
+                header_indexes.insert(header_string_value, index);
+            }
+        }
+        let rows = reader
+            .entries()
+            .filter(|row| {
+                let doc_entry = DocEntry {
+                    row,
+                    header_indexes: &header_indexes,
+                };
+                filter(&doc_entry)
+            })
+            .collect();
+        Ok(Document {
+            headers,
+            rows,
+            header_indexes,
+        })
+    }
+
     /// Create an empty document without headers
     pub fn empty() -> Self {
         Document::default()
@@ -403,7 +445,7 @@ impl Document {
     ///     "jeng@mail.com",
     ///     "Marktown High School"
     /// ]);
-    /// doc.write_to_file("malist.csv")
+    /// doc.write_to_file("mail_list.csv")
     ///     .expect("Error writing to file");
     /// ``````
     pub fn write_to_file(&self, path: impl AsRef<Path>) -> Result<()> {
