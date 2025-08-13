@@ -17,7 +17,10 @@
 //! }
 //! ```
 
-use std::{io::BufReader, path::Path};
+use std::{
+    io::{self, BufReader},
+    path::Path,
+};
 
 use crate::*;
 

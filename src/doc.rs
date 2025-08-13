@@ -1,4 +1,5 @@
 use crate::{CsvError, Reader, Result, Row, Writer};
+use std::ops::Index;
 use std::{
     collections::{hash_map::Keys, HashMap},
     fmt::{Debug, Display},
@@ -504,7 +505,19 @@ impl DocEntry<'_> {
             Err(CsvError::InvalidColumn(col_name.to_string()))
         }
     }
-
+    /// Get the raw string value at the current row-column intersection.
+    /// # Arguments
+    /// `col_name`
+    /// # Returns
+    /// An optional string if the column exists
+    pub fn get_raw(&self, col_name: &str) -> Option<String> {
+        if let Some(col_index) = self.header_indexes.get(col_name) {
+            // Assuming Row implements Index<usize, Output = String>
+            self.row.get_raw(*col_index)
+        } else {
+            None
+        }
+    }
     /// Get a an iterator of all the columns in this row.
     pub fn columns(&self) -> Keys<'_, String, usize> {
         self.header_indexes.keys()
@@ -580,6 +593,20 @@ impl DocEntryMut<'_> {
         }
     }
 
+    /// Get the raw string value at the current row-column intersection.
+    /// # Arguments
+    /// `col_name`
+    /// # Returns
+    /// An optional string if the column exists
+    pub fn get_raw(&self, col_name: &str) -> Option<String> {
+        if let Some(col_index) = self.header_indexes.get(col_name) {
+            // Assuming Row implements Index<usize, Output = String>
+            self.row.get_raw(*col_index)
+        } else {
+            None
+        }
+    }
+
     /// Get the value at the current row-column intersection. .
     ///
     /// # Arguments
@@ -630,6 +657,33 @@ impl Debug for DocEntryMut<'_> {
 impl Display for DocEntryMut<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         Display::fmt(self.row, f)
+    }
+}
+
+impl<'a> Index<&str> for DocEntryMut<'a> {
+    type Output = str;
+
+    fn index(&self, col_name: &str) -> &Self::Output {
+        if let Some(col_index) = self.header_indexes.get(col_name) {
+            // Assuming Row implements Index<usize, Output = String>
+            // and we want to return &str
+            &self.row.index(*col_index)
+        } else {
+            panic!("Invalid column name: {}", col_name);
+        }
+    }
+}
+impl<'a> Index<&str> for DocEntry<'a> {
+    type Output = str;
+
+    fn index(&self, col_name: &str) -> &Self::Output {
+        if let Some(col_index) = self.header_indexes.get(col_name) {
+            // Assuming Row implements Index<usize, Output = String>
+            // and we want to return &str
+            &self.row.index(*col_index)
+        } else {
+            panic!("Invalid column name: {}", col_name);
+        }
     }
 }
 
