@@ -270,7 +270,7 @@ impl Row {
     }
     /// Retrieves the raw string value of a field at the given index.
     /// Returns an empty string if the index is out of bounds or the field is not valid UTF-8.
-    pub fn get_raw(&self, index: usize) -> Option<String> {
+    pub fn get_value(&self, index: usize) -> Option<String> {
         match self.ranges.get(index) {
             Some((start, end)) => {
                 Some(String::from_utf8_lossy(&self.inner[*start..*end]).to_string())

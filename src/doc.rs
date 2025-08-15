@@ -36,9 +36,9 @@ use std::{
 ///
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Document {
-    headers: Option<Row>,
-    rows: Vec<Row>,
-    header_indexes: HashMap<String, usize>,
+    pub(crate) headers: Option<Row>,
+    pub(crate) rows: Vec<Row>,
+    pub(crate) header_indexes: HashMap<String, usize>,
 }
 
 impl Document {
@@ -113,6 +113,7 @@ impl Document {
             .entries()
             .filter(|row| {
                 let doc_entry = DocEntry {
+                    headers: &headers,
                     row,
                     header_indexes: &header_indexes,
                 };
@@ -210,6 +211,7 @@ impl Document {
         self.rows.retain(|row| {
             // Wrap Row into DocEntry, to allow use of headers in querying
             let entry = DocEntry {
+                headers: &self.headers,
                 row,
                 header_indexes: &self.header_indexes,
             };
@@ -326,6 +328,7 @@ impl Document {
             .iter()
             .filter(|row| row.get::<T>(column).as_ref() == Ok(value))
             .map(|row| DocEntry {
+                headers: &self.headers,
                 row,
                 header_indexes: &self.header_indexes,
             })
@@ -344,6 +347,7 @@ impl Document {
     /// Get an iterator to all the rows in the document
     pub fn rows(&self) -> DocIter<'_> {
         DocIter {
+            headers: &self.headers,
             header_indexes: &self.header_indexes,
             iter: self.rows.iter(),
         }
@@ -351,6 +355,7 @@ impl Document {
     /// Get a mutable iterator to all the rows in the document
     pub fn rows_mut(&mut self) -> DocIterMut<'_> {
         DocIterMut {
+            headers: &self.headers,
             header_indexes: &self.header_indexes,
             iter: self.rows.iter_mut(),
         }
@@ -485,6 +490,7 @@ where
 }
 
 pub struct DocEntry<'a> {
+    pub(crate) headers: &'a Option<Row>,
     pub(crate) row: &'a Row,
     pub(crate) header_indexes: &'a HashMap<String, usize>,
 }
@@ -510,10 +516,10 @@ impl DocEntry<'_> {
     /// `col_name`
     /// # Returns
     /// An optional string if the column exists
-    pub fn get_raw(&self, col_name: &str) -> Option<String> {
+    pub fn get_value(&self, col_name: &str) -> Option<String> {
         if let Some(col_index) = self.header_indexes.get(col_name) {
             // Assuming Row implements Index<usize, Output = String>
-            self.row.get_raw(*col_index)
+            self.row.get_value(*col_index)
         } else {
             None
         }
@@ -553,7 +559,8 @@ impl Display for DocEntry<'_> {
 }
 
 pub struct DocIter<'a> {
-    iter: Iter<'a, Row>,
+    pub(crate) headers: &'a Option<Row>,
+    pub(crate) iter: Iter<'a, Row>,
     pub(crate) header_indexes: &'a HashMap<String, usize>,
 }
 
@@ -563,6 +570,7 @@ impl<'a> Iterator for DocIter<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(row) = self.iter.next() {
             Some(DocEntry {
+                headers: self.headers,
                 row,
                 header_indexes: self.header_indexes,
             })
@@ -572,6 +580,7 @@ impl<'a> Iterator for DocIter<'a> {
     }
 }
 pub struct DocEntryMut<'a> {
+    headers: &'a Option<Row>,
     pub(crate) row: &'a mut Row,
     pub(crate) header_indexes: &'a HashMap<String, usize>,
 }
@@ -601,7 +610,7 @@ impl DocEntryMut<'_> {
     pub fn get_raw(&self, col_name: &str) -> Option<String> {
         if let Some(col_index) = self.header_indexes.get(col_name) {
             // Assuming Row implements Index<usize, Output = String>
-            self.row.get_raw(*col_index)
+            self.row.get_value(*col_index)
         } else {
             None
         }
@@ -688,6 +697,7 @@ impl<'a> Index<&str> for DocEntry<'a> {
 }
 
 pub struct DocIterMut<'a> {
+    headers: &'a Option<Row>,
     iter: IterMut<'a, Row>,
     pub(crate) header_indexes: &'a HashMap<String, usize>,
 }
@@ -698,6 +708,7 @@ impl<'a> Iterator for DocIterMut<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(row) = self.iter.next() {
             Some(DocEntryMut {
+                headers: self.headers,
                 row,
                 header_indexes: self.header_indexes,
             })
@@ -706,3 +717,38 @@ impl<'a> Iterator for DocIterMut<'a> {
         }
     }
 }
+
+impl<'a> FromIterator<DocEntry<'a>> for Document {
+    fn from_iter<T: IntoIterator<Item = DocEntry<'a>>>(iter: T) -> Self {
+        let mut doc = Document::default();
+        for entry in iter {
+            // Copy headers and header_indexes from the first entry if not set
+            if doc.headers.is_none() {
+                if let Some(headers) = entry.headers.as_ref() {
+                    doc.headers = Some(headers.clone());
+                }
+                doc.header_indexes = entry.header_indexes.clone();
+            }
+            doc.rows.push(entry.row.clone());
+        }
+        doc
+    }
+}
+
+impl<'a> FromIterator<DocEntryMut<'a>> for Document {
+    fn from_iter<T: IntoIterator<Item = DocEntryMut<'a>>>(iter: T) -> Self {
+        let mut doc = Document::default();
+        for entry in iter {
+            // Copy headers and header_indexes from the first entry if not set
+            if doc.headers.is_none() {
+                if let Some(headers) = entry.headers.as_ref() {
+                    doc.headers = Some(headers.clone());
+                }
+                doc.header_indexes = entry.header_indexes.clone();
+            }
+            doc.rows.push(entry.row.clone());
+        }
+        doc
+    }
+}
+// implement FromIterator from DockIter
