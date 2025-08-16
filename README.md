@@ -68,12 +68,9 @@ fn main() -> Result<(), CsvError> {
         let name = student.get::<String>("name")?;
         let last_name = student.get::<String>("lastname")?;
 
-        // Modify Rows only if needed
-        if name == "Bartholomew" && last_name == "Simpson" {
-            student.set("homework", 85);
-            student.set("attendance", 100);
-            student.set("final exam", 93);
-        }
+        // do intended work
+        ...
+       
     }
 
     // Save filtered results
