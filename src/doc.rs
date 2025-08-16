@@ -103,9 +103,7 @@ impl Document {
         let mut header_indexes = HashMap::new();
         if let Some(header) = &headers {
             for (index, value) in header.iter().enumerate() {
-                let header_string_value = value.to_string().map_err(|_| {
-                    CsvError::ConversionError(index, std::any::type_name::<String>().to_owned())
-                })?;
+                let header_string_value = value.to_string();
                 header_indexes.insert(header_string_value, index);
             }
         }
@@ -336,11 +334,16 @@ impl Document {
     }
 
     /// Get the header row of the document.
-    pub fn get_headers_row(&self) -> Row {
+    pub fn get_header_row(&self) -> &Option<Row> {
+        &self.headers
+    }
+
+    /// Get the header row of the document.
+    pub fn get_header_names(&self) -> Option<Vec<String>> {
         if let Some(headers) = &self.headers {
-            headers.clone()
+            Some(headers.into())
         } else {
-            Row::new()
+            None
         }
     }
 
@@ -456,7 +459,9 @@ impl Document {
     /// ``````
     pub fn write_to_file(&self, path: impl AsRef<Path>) -> Result<()> {
         let mut writer = Writer::from_path(path)?;
-        writer.write(&self.get_headers_row())?;
+        if let Some(header) = self.headers.as_ref() {
+            writer.write(header)?;
+        }
         for row in &self.rows {
             writer.write(row)?;
         }
@@ -475,9 +480,7 @@ where
         let mut header_indexes = HashMap::new();
         if let Some(header) = &headers {
             for (index, value) in header.iter().enumerate() {
-                let header_string_value = value.to_string().map_err(|_| {
-                    CsvError::ConversionError(index, std::any::type_name::<String>().to_owned())
-                })?;
+                let header_string_value = value.to_string();
                 header_indexes.insert(header_string_value, index);
             }
         }

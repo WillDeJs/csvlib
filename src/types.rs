@@ -49,17 +49,6 @@ impl Field {
         &self.inner
     }
 
-    /// Convert the Field into a String.
-    ///
-    /// If parsing is possible a Result is returned which needs to be unwrapped
-    /// in order to retrieve the inner string value.
-    ///
-    /// # Errors
-    /// If the bytes inside of the field cannot be parsed into a valid UTF8 String
-    pub fn to_string(&self) -> Result<String> {
-        String::from_utf8(self.inner.clone()).map_err(|_| CsvError::InvalidString)
-    }
-
     /// Cast field into a given type.
     ///
     /// If the parsing is not possible, a result with an error is returned.
@@ -68,7 +57,7 @@ impl Field {
     /// If the bytes inside the field cannot be parsed into valid UTF8 strings.
     /// If the resulting field cannot be parsed into the type specified for conversion
     pub fn cast<T: FromStr>(&self) -> Result<T> {
-        self.to_string()?
+        self.to_string()
             .parse::<T>()
             .map_err(|_| CsvError::FieldParseError(type_name::<T>().to_string()))
     }
@@ -89,7 +78,7 @@ impl From<&str> for Field {
 
 impl std::fmt::Display for Field {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.to_string().map_err(|_| std::fmt::Error)?)
+        write!(f, "{}", String::from_utf8_lossy(&self.inner))
     }
 }
 
@@ -301,6 +290,11 @@ impl From<&[&String]> for Row {
         row
     }
 }
+impl From<&Row> for Vec<String> {
+    fn from(value: &Row) -> Self {
+        value.iter().map(|f| f.to_string()).collect::<Vec<String>>()
+    }
+}
 
 impl Index<usize> for Row {
     type Output = str;
@@ -315,7 +309,7 @@ impl std::fmt::Display for Row {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let last_index = self.ranges.len().saturating_sub(1);
         for (index, field) in self.iter().enumerate() {
-            let field_value = field.to_string().map_err(|_| std::fmt::Error)?;
+            let field_value = field.to_string();
 
             // escape every single quote. This assumes what's present in each field
             // is what the user wants in it, no need for the user to escape things for us
