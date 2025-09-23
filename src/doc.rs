@@ -134,9 +134,12 @@ impl Document {
     ///
     /// # Arguments
     /// `row` Row being inserted.
-    pub fn insert(&mut self, row: Row) {
+    pub fn insert<T>(&mut self, row: T)
+    where
+        T: Into<Row>,
+    {
         // TODO: Validate row length
-        self.rows.push(row);
+        self.rows.push(row.into());
     }
 
     /// Inserts multiple rows to the document.
@@ -300,7 +303,7 @@ impl Document {
     /// # Arguments
     /// `col_name`  Name of the column to match.
     /// `value`     Value to match in each row.
-    pub fn get_rows_where<T>(&self, col_name: &str, value: &T) -> Vec<DocEntry>
+    pub fn get_rows_where<T>(&self, col_name: &str, value: &T) -> Vec<DocEntry<'_>>
     where
         T: Sized + Display + PartialEq + FromStr,
     {
@@ -318,7 +321,7 @@ impl Document {
     /// # Arguments
     /// `column`    Index of the column to match.
     /// `value`     Value to match in each row.
-    pub fn get_rows_where_indexed<T>(&self, column: usize, value: &T) -> Vec<DocEntry>
+    pub fn get_rows_where_indexed<T>(&self, column: usize, value: &T) -> Vec<DocEntry<'_>>
     where
         T: Sized + Display + PartialEq + FromStr,
     {

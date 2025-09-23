@@ -148,7 +148,7 @@ impl Row {
     /// }
     /// ```
     ///
-    pub fn iter(&self) -> FieldsIter {
+    pub fn iter(&self) -> FieldsIter<'_> {
         FieldsIter {
             row: self,
             index: 0,
