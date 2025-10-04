@@ -66,7 +66,9 @@ impl Reader<std::fs::File> {
     ///
     ///
     pub fn from_path(path: impl AsRef<Path>) -> Result<Self> {
-        let file = std::fs::File::open(path).map_err(|_| CsvError::FileError)?;
+        let file_name = path.as_ref().display().to_string();
+        let file = std::fs::File::open(path)
+            .map_err(|e| CsvError::FileAccessError(file_name, e.to_string()))?;
         let mut reader = BufReader::new(file);
         let header = read_fields(
             &mut reader,
@@ -175,7 +177,7 @@ where
                     delimiter: self.delimiter,
                 })
             }
-            _ => Err(CsvError::ReadError),
+            _ => Err(CsvError::ReadError("No reader given".to_string())),
         }
     }
 
@@ -281,7 +283,7 @@ fn read_fields(
         multi_line = false;
         line_buffer.clear();
         match reader.read_line(line_buffer) {
-            Ok(0) => return Err(CsvError::RecordError),
+            Ok(0) => return Err(CsvError::RecordError(line_buffer.to_string())),
             Ok(_n) => {
                 let mut escaping = false;
 
@@ -340,7 +342,7 @@ fn read_fields(
                 }
             }
 
-            Err(_) => return Err(CsvError::ReadError),
+            Err(e) => return Err(CsvError::ReadError(e.to_string())),
         }
     }
 

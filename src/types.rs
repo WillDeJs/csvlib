@@ -2,7 +2,6 @@ pub use std::ops::Index;
 pub use std::str::FromStr;
 use std::{
     any::type_name,
-    borrow::BorrowMut,
     error::Error,
     fmt::{self, Display},
     io::{self},
@@ -57,9 +56,10 @@ impl Field {
     /// If the bytes inside the field cannot be parsed into valid UTF8 strings.
     /// If the resulting field cannot be parsed into the type specified for conversion
     pub fn cast<T: FromStr>(&self) -> Result<T> {
-        self.to_string()
+        let string_val = self.to_string();
+        string_val
             .parse::<T>()
-            .map_err(|_| CsvError::FieldParseError(type_name::<T>().to_string()))
+            .map_err(|_| CsvError::FieldParseError(string_val, type_name::<T>().to_string()))
     }
 }
 
@@ -243,10 +243,14 @@ impl Row {
     /// ```
     pub fn get<T: std::str::FromStr>(&self, index: usize) -> Result<T> {
         match self.ranges.get(index) {
-            Some((start, end)) => Ok(String::from_utf8_lossy(&self.inner[*start..*end])
-                .borrow_mut()
-                .parse::<T>()
-                .map_err(|_| CsvError::ConversionError(index, type_name::<T>().to_string()))?),
+            Some((start, end)) => {
+                let field = &self.inner[*start..*end];
+                let field_str = String::from_utf8_lossy(field).to_string();
+                let parsed = field_str.parse::<T>().map_err(|_| {
+                    CsvError::ConversionError(index, field_str, type_name::<T>().to_string())
+                })?;
+                Ok(parsed)
+            }
             _ => Err(CsvError::NotAField(index)),
         }
     }
@@ -367,13 +371,14 @@ macro_rules! csv {
 
 #[derive(Debug, PartialEq)]
 pub enum CsvError {
-    RecordError,
-    ReadError,
-    ConversionError(usize, String),
+    RecordError(String),
+    ReadError(String),
+    ConversionError(usize, String, String),
     InvalidString,
-    FieldParseError(String),
+    FieldParseError(String, String),
     NotAField(usize),
-    FileError,
+    IOError(String),
+    FileAccessError(String, String),
     InvalidColumn(String),
     InvalidRow(usize),
     InvalidColumnIndex(usize),
@@ -383,17 +388,23 @@ pub enum CsvError {
 impl Display for CsvError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            CsvError::RecordError => write!(f, "Error reading CSV row"),
-            CsvError::ReadError => write!(f, "Error reading from source."),
-            CsvError::ConversionError(index, type_name) => {
-                write!(f, "Error converting field `{index}` to type `{type_name}`")
-            }
+            CsvError::RecordError(line) => write!(f, "Error parsing CSV row\n\t`{line}`."),
+            CsvError::ReadError(error) => write!(f, "Error reading from source `{error}`."),
             CsvError::InvalidString => write!(f, "Cannot convert field to a valid string."),
             CsvError::NotAField(index) => write!(f, "Not field at given index `{index}`."),
-            CsvError::FieldParseError(type_name) => {
-                write!(f, "Error parsing field to `{type_name}`.")
+            CsvError::ConversionError(field, value, type_name) => {
+                write!(
+                    f,
+                    "Error parsing field  `{field}` with value `{value}` into `{type_name}`."
+                )
             }
-            CsvError::FileError => write!(f, "Error accessing file."),
+            CsvError::IOError(error) => write!(f, "Error accessing resource `{error}`."),
+            CsvError::FieldParseError(value, type_name) => {
+                write!(f, "Error parsing field `{value}` to `{type_name}`.")
+            }
+            CsvError::FileAccessError(file, reason) => {
+                write!(f, "Error accessing file `{file}`: {reason}.")
+            }
             CsvError::InvalidColumn(column) => {
                 write!(f, "Invalid Column: `{column}`. Not found in document.")
             }
@@ -409,8 +420,8 @@ impl Display for CsvError {
 }
 
 impl From<io::Error> for CsvError {
-    fn from(_: io::Error) -> Self {
-        CsvError::FileError
+    fn from(e: io::Error) -> Self {
+        CsvError::IOError(e.to_string())
     }
 }
 

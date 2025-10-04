@@ -54,7 +54,11 @@ impl Writer<std::fs::File> {
     /// # Error
     /// If the underlying file behind path is not accessible for any reason.
     pub fn from_path(path: impl AsRef<Path>) -> Result<Self> {
-        let writer = BufWriter::new(std::fs::File::create(path).map_err(|_| CsvError::FileError)?);
+        let file_name = path.as_ref().display().to_string();
+        let writer = BufWriter::new(
+            std::fs::File::create(path)
+                .map_err(|e| CsvError::FileAccessError(file_name, e.to_string()))?,
+        );
         Ok(Self {
             writer,
             delimiter: None,
