@@ -1,7 +1,7 @@
 //! [crate]
 //! A simple CSV Reader/Writer library created for personal projects.
 //!
-//! # Example (Writer):
+//! ## Example 1: Writing to a file:
 //! ```no_run
 //!
 //!
@@ -22,7 +22,7 @@
 //!     .unwrap();
 //!
 //!```
-//! # Example (Reader):
+//! ## Example 2: Reading a file:
 //! ```no_run
 //!     // create custom rows
 //!     let row = csvlib::csv!["Intr,o", 34, "klk", "manito"];
@@ -41,6 +41,59 @@
 //!     }
 //!
 //! ```
+//! ## Example 3: Reading a Document:
+//! ```rust
+//! use csvlib::Document;
+//! let mut doc = Document::with_headers(&["Name", "Age", "Email", "School"]);
+//! doc.insert(csvlib::csv![
+//!     "Mike",
+//!     15,
+//!     "kime@mail.com",
+//!     "Marktown High School"
+//! ]);
+//! doc.insert(csvlib::csv![
+//!     "Jenny",
+//!     16,
+//!     "jeng@mail.com",
+//!     "Marktown High School"
+//! ]);
+//! doc.write_to_file("malist.csv")
+//!     .expect("Error writing to file");
+//! ```
+//!
+//! ##  Example 4: Reading decoded rows from a document:
+//! ```no_run
+//! use csvlib::{CsvError, DocEntry, Document, FromDocEntry};
+//! pub struct Person {
+//!     pub name: String,
+//!     pub last_name: String,
+//!     pub age: u32,
+//!     pub email: String,
+//! }
+//!
+//! impl FromDocEntry for Person {
+//!     fn from(entry: &DocEntry) -> Result<Self, CsvError> {
+//!         Ok(Person {
+//!             name: entry.get::<String>("name")?,
+//!             age: entry.get::<u32>("age")?,
+//!             last_name: entry.get::<String>("last_name")?,
+//!             email: entry.get::<String>("email")?,
+//!         })
+//!     }
+//! }
+//! fn main() {
+//!     let document = Document::from_path("people.csv").unwrap();
+//!     let mut total_age = 0;
+//!     let mut count = 0;
+//!     for person in document.rows_decoded::<Person>() {
+//!         let person = person.unwrap();
+//!         total_age += person.age;
+//!         count += 1;
+//!     }
+//!     let average_age = total_age as f32 / count as f32;
+//!     println!("Average age: {}", average_age);
+//! }
+//!
 
 pub mod doc;
 pub mod reader;

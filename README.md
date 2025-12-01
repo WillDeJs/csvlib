@@ -1,79 +1,94 @@
 # CSVLIB #
 A simple Rust CSV Reader/Writer library with a simple API. Implements `Reader`, `Writer` and `Document` structures.
 
-## Reader ##
-Read and iterate throw CSV files easily. See CSV Reader example below.
-### Example (Reader): ###
- ``` rs
-// Open a CSV file to read.
-let csv_reader = csvlib::Reader::from_path("./AAPL.csv").unwrap();
+## Example 1: Reading a file:
+ ```rust
+     // create custom rows
+     let row = csvlib::csv!["Intr,o", 34, "klk", "manito"];
 
-// Iterate through rows
-println!("{}", csv_reader.headers().unwrap());
-for entry in csv_reader.entries() {
-    println!("{}", entry);
-}
+     // Parse row fields
+     println!("Got: {}", row.get::<u32>(1).unwrap());
+     println!("{}", row);
+
+     // Iterate through rows
+     let mut csv_reader = csvlib::Reader::from_path("./TSLA.csv")
+         .unwrap();
+
+     println!("{}", csv_reader.headers().unwrap());
+     for entry in csv_reader.entries() {
+         println!("{}", entry);
+     }
+
+ ```
+ ## Example 2: Writing to a file:
+ ```rust
+ // Write to file
+ let mut writer = csvlib::Writer::from_writer(std::fs::File::create("./test.txt").unwrap());
+
+ // Create custom rows
+ let header = csvlib::csv!["Header1", "Header 2", "Header,3"];
+ writer.write(&header).unwrap();
+ writer
+     .write_all(&vec![
+         csvlib::csv!["Header1", "Header 2", "Header,3"],
+         csvlib::csv!["entry", "entry", "entry"],
+         csvlib::csv!["entry", "entry", "entry"],
+         csvlib::csv!["entry", "entry", "entry"],
+         csvlib::csv!["entry", "entry", "entry"],
+     ])
+     .unwrap();
+
+```
+ ## Example 3: Reading a Document:
+ ```rust
+ use csvlib::Document;
+ let mut doc = Document::with_headers(&["Name", "Age", "Email", "School"]);
+ doc.insert(csvlib::csv![
+     "Mike",
+     15,
+     "kime@mail.com",
+     "Marktown High School"
+ ]);
+ doc.insert(csvlib::csv![
+     "Jenny",
+     16,
+     "jeng@mail.com",
+     "Marktown High School"
+ ]);
+ doc.write_to_file("malist.csv")
+     .expect("Error writing to file");
  ```
 
-## Writer ##
-Create CSV files and write rows easily. See CSV Writer example.
-### Example (Writer): ###
- ``` rs
-// Create a writer from a file path
-let mut writer = csvlib::Writer::from_path("./test.csv").unwrap();
+ ##  Example 4: Reading decoded rows from a document:
+ ```rust
+ use csvlib::{CsvError, DocEntry, Document, FromDocEntry};
+ pub struct Person {
+     pub name: String,
+     pub last_name: String,
+     pub age: u32,
+     pub email: String,
+ }
 
-// Write rows to file
-writer.write_all(&[
-        csvlib::csv!["Header1", "Header2", "Header3"]
-        csvlib::csv!["entry11", "entry12", "entry13"],
-        csvlib::csv!["entry21", "entry22", "entry23"],
-        csvlib::csv!["entry31", "entry32", "entry33"],
-        csvlib::csv!["entry41", "entry42", "entry43"],
-    ])
-    .unwrap();
-```
-
-## Document ##
-Easily open a document and search through it.
-```rs
- use csvlib::Document;
- let doc = Document::from_path("students.csv").expect("Could not open file");
-
- // Get some field values
- let ages = doc.get_column::<i32>("Age").unwrap();
- let emails = doc.get_column::<String>(&String::from("Email")).unwrap();
- let schools = doc.get_column::<String>("School").unwrap();
-```
-Additionally modify, filter  and save values inside of the document and make copies if needed.
-
-
-```rs
-use csvlib::{CsvError, Document};
-
-fn main() -> Result<(), CsvError> {
-    // Open document
-    let mut students_document = Document::from_path(r#"students.csv"#).unwrap();
-
-    // Filter the document based on the desired criteria
-    students_document.retain(|entry| {
-        // Keep students only from Springfield high
-        match entry.get::<String>("school") {
-            Ok(school_name) => school_name == "Springfield High School",
-            _ => false,
-        }
-    });
-
-    // Iterate through the rows in the document
-    for mut student in students_document.rows_mut() {
-        let name = student.get::<String>("name")?;
-        let last_name = student.get::<String>("lastname")?;
-
-        // do intended work
-        ...
-       
-    }
-
-    // Save filtered results
-    students_document.write_to_file("Springfield Students.csv")
-}
+ impl FromDocEntry for Person {
+     fn from(entry: &DocEntry) -> Result<Self, CsvError> {
+         Ok(Person {
+             name: entry.get::<String>("name")?,
+             age: entry.get::<u32>("age")?,
+             last_name: entry.get::<String>("last_name")?,
+             email: entry.get::<String>("email")?,
+         })
+     }
+ }
+ fn main() {
+     let document = Document::from_path("people.csv").unwrap();
+     let mut total_age = 0;
+     let mut count = 0;
+     for person in document.rows_decoded::<Person>() {
+         let person = person.unwrap();
+         total_age += person.age;
+         count += 1;
+     }
+     let average_age = total_age as f32 / count as f32;
+     println!("Average age: {}", average_age);
+ }
 ```

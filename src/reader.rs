@@ -38,6 +38,63 @@ impl<R: io::Read> Reader<R> {
     pub fn entries(self) -> Entries<R> {
         Entries::new(self)
     }
+
+    ///
+    /// Iterate over all rows, decoding them into the given type T.
+    /// An iterator of Results is returned.
+    /// # Example
+    /// ```no_run
+    /// use csvlib::{FromRow, Reader, Result, Row};
+    ///
+    /// pub struct Person {
+    ///     pub name: String,
+    ///     pub last_name: String,
+    ///     pub age: u32,
+    ///     pub email: String,
+    /// }
+    ///
+    /// impl FromRow for Person {
+    ///     fn from(row: &Row) -> Result<Self> {
+    ///         Ok(Person {
+    ///             // Using column indices. Adjust indices to match your CSV header order.
+    ///             name: row.get::<String>(0)?,
+    ///             last_name: row.get::<String>(1)?,
+    ///             age: row.get::<u32>(2)?,
+    ///             email: row.get::<String>(3)?,
+    ///         })
+    ///     }
+    /// }
+    ///
+    /// fn main() -> Result<()> {
+    ///     // Use the low-level Reader which yields `Row`s (the "Rows" iterator)
+    ///     let reader = Reader::from_path("people.csv")?;
+    ///
+    ///     let mut total_age: u32 = 0;
+    ///     let mut count: u32 = 0;
+    ///
+    ///     for person_res in reader.entries_decoded::<Person>() {
+    ///         let person = person_res?;
+    ///         total_age += person.age;
+    ///         count += 1;
+    ///     }
+    ///
+    ///     if count == 0 {
+    ///         println!("No people found");
+    ///         return Ok(());
+    ///     }
+    ///
+    ///     let average_age = total_age as f32 / count as f32;
+    ///     println!("Average age: {}", average_age);
+    ///
+    ///     Ok(())
+    /// }
+
+    pub fn entries_decoded<T>(self) -> impl Iterator<Item = Result<T>>
+    where
+        T: FromRow,
+    {
+        self.entries().map(|row| T::from(&row))
+    }
 }
 
 impl<R> Reader<R>

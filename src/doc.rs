@@ -367,6 +367,50 @@ impl Document {
         }
     }
 
+    /// Iterate over all rows, decoding them into the given type T.
+    /// An iterator of Results is returned.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use csvlib::{CsvError, DocEntry, Document, FromDocEntry};
+    /// pub struct Person {
+    ///     pub name: String,
+    ///     pub last_name: String,
+    ///     pub age: u32,
+    ///     pub email: String,
+    /// }
+    ///
+    /// impl FromDocEntry for Person {
+    ///     fn from(entry: &DocEntry) -> Result<Self, CsvError> {
+    ///         Ok(Person {
+    ///             name: entry.get::<String>("name")?,
+    ///             age: entry.get::<u32>("age")?,
+    ///             last_name: entry.get::<String>("last_name")?,
+    ///             email: entry.get::<String>("email")?,
+    ///         })
+    ///     }
+    /// }
+    /// fn main() {
+    ///     let document = Document::from_path("people.csv").unwrap();
+    ///     let mut total_age = 0;
+    ///     let mut count = 0;
+    ///     // Use the rows() iterator and decode each DocEntry manually
+    ///     for person_res in document.rows().map(|entry| Person::from(&entry)) {
+    ///         let person = person_res.unwrap();
+    ///         total_age += person.age;
+    ///         count += 1;
+    ///     }
+    ///     let average_age = total_age as f32 / count as f32;
+    ///     println!("Average age: {}", average_age);
+    /// }
+    /// ```
+    pub fn rows_decoded<T>(&self) -> impl Iterator<Item = Result<T>> + '_
+    where
+        T: FromDocEntry,
+    {
+        self.rows().map(|entry| T::from(&entry))
+    }
+
     /// Get the count of all rows in the document
     pub fn count(&self) -> usize {
         self.rows.len()
@@ -757,4 +801,8 @@ impl<'a> FromIterator<DocEntryMut<'a>> for Document {
         doc
     }
 }
-// implement FromIterator from DockIter
+
+/// Trait to convert a [DocEntry] into a custom struct.
+pub trait FromDocEntry: Sized {
+    fn from(entry: &DocEntry) -> Result<Self>;
+}
