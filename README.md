@@ -39,7 +39,7 @@ A simple Rust CSV Reader/Writer library with a simple API. Implements `Reader`, 
      .unwrap();
 
 ```
- ## Example 3: Reading a Document:
+ ## Example 3: Writing to a Document:
  ```rust
  use csvlib::Document;
  let mut doc = Document::with_headers(&["Name", "Age", "Email", "School"]);
