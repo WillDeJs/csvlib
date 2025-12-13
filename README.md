@@ -61,7 +61,7 @@ A simple Rust CSV Reader/Writer library with a simple API. Implements `Reader`, 
 
  ##  Example 4: Reading decoded rows from a document:
  ```rust
- use csvlib::{CsvError, DocEntry, Document, FromDocEntry};
+ use csvlib::{CsvError, DocEntry, Document};
  pub struct Person {
      pub name: String,
      pub last_name: String,
@@ -69,15 +69,16 @@ A simple Rust CSV Reader/Writer library with a simple API. Implements `Reader`, 
      pub email: String,
  }
 
- impl FromDocEntry for Person {
-     fn from(entry: &DocEntry) -> Result<Self, CsvError> {
-         Ok(Person {
-             name: entry.get::<String>("name")?,
-             age: entry.get::<u32>("age")?,
-             last_name: entry.get::<String>("last_name")?,
-             email: entry.get::<String>("email")?,
-         })
-     }
+ impl TryFrom<DocEntry<'_>> for Person {
+    type Error = CsvError;
+    fn try_from(entry: DocEntry) -> Result<Self, CsvError> {
+        Ok(Person {
+            name: entry.get::<String>("name")?,
+            age: entry.get::<u32>("age")?,
+            last_name: entry.get::<String>("last_name")?,
+            email: entry.get::<String>("email")?,
+        })
+    }
  }
  fn main() {
      let document = Document::from_path("people.csv").unwrap();

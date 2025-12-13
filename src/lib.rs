@@ -57,13 +57,13 @@
 //!     "jeng@mail.com",
 //!     "Marktown High School"
 //! ]);
-//! doc.write_to_file("malist.csv")
+//! doc.write_to_file("mail_list.csv")
 //!     .expect("Error writing to file");
 //! ```
 //!
 //! ##  Example 4: Reading decoded rows from a document:
 //! ```no_run
-//! use csvlib::{CsvError, DocEntry, Document, FromDocEntry};
+//! use csvlib::{CsvError, DocEntry, Document};
 //! pub struct Person {
 //!     pub name: String,
 //!     pub last_name: String,
@@ -71,8 +71,9 @@
 //!     pub email: String,
 //! }
 //!
-//! impl FromDocEntry for Person {
-//!     fn from(entry: &DocEntry) -> Result<Self, CsvError> {
+//! impl TryFrom<DocEntry<'_>> for Person {
+//!     type Error = CsvError;  
+//!     fn try_from(entry: DocEntry) -> Result<Self, CsvError> {
 //!         Ok(Person {
 //!             name: entry.get::<String>("name")?,
 //!             age: entry.get::<u32>("age")?,

@@ -15,7 +15,7 @@ use std::{
 /// For large files use regular lower level Writer/Reader structures.
 ///
 /// # Example
-/// ```rust
+/// ```no_run
 /// use csvlib::Document;
 /// let mut doc = Document::with_headers(&["Name", "Age", "Email", "School"]);
 /// doc.insert(csvlib::csv![
@@ -30,7 +30,7 @@ use std::{
 ///     "jeng@mail.com",
 ///     "Marktown High School"
 /// ]);
-/// doc.write_to_file("malist.csv")
+/// doc.write_to_file("mail_list.csv")
 ///     .expect("Error writing to file");
 /// ```
 ///
@@ -372,7 +372,7 @@ impl Document {
     ///
     /// # Example
     /// ```no_run
-    /// use csvlib::{CsvError, DocEntry, Document, FromDocEntry};
+    /// use csvlib::{CsvError, DocEntry, Document};
     /// pub struct Person {
     ///     pub name: String,
     ///     pub last_name: String,
@@ -380,8 +380,9 @@ impl Document {
     ///     pub email: String,
     /// }
     ///
-    /// impl FromDocEntry for Person {
-    ///     fn from(entry: &DocEntry) -> Result<Self, CsvError> {
+    /// impl TryFrom<DocEntry<'_>> for Person {
+    ///     type Error = CsvError;
+    ///     fn try_from(entry: DocEntry) -> Result<Self, CsvError> {
     ///         Ok(Person {
     ///             name: entry.get::<String>("name")?,
     ///             age: entry.get::<u32>("age")?,
@@ -395,7 +396,7 @@ impl Document {
     ///     let mut total_age = 0;
     ///     let mut count = 0;
     ///     // Use the rows() iterator and decode each DocEntry manually
-    ///     for person_res in document.rows().map(|entry| Person::from(&entry)) {
+    ///     for person_res in document.rows_decoded::<Person>() {
     ///         let person = person_res.unwrap();
     ///         total_age += person.age;
     ///         count += 1;
@@ -404,11 +405,11 @@ impl Document {
     ///     println!("Average age: {}", average_age);
     /// }
     /// ```
-    pub fn rows_decoded<T>(&self) -> impl Iterator<Item = Result<T>> + '_
+    pub fn rows_decoded<T>(&self) -> impl Iterator<Item = Result<T>> + use<'_, T>
     where
-        T: FromDocEntry,
+        for<'a> T: TryFrom<DocEntry<'a>, Error = CsvError>,
     {
-        self.rows().map(|entry| T::from(&entry))
+        self.rows().map(move |entry| T::try_from(entry))
     }
 
     /// Get the count of all rows in the document
@@ -486,7 +487,7 @@ impl Document {
     /// If writing to file fails for IO related reasons.
     ///
     /// # Example
-    /// ```rust
+    /// ```no_run
     /// use csvlib::Document;
     /// let mut doc = Document::with_headers(&["Name", "Age", "Email", "School"]);
     /// doc.insert(csvlib::csv![
@@ -800,9 +801,4 @@ impl<'a> FromIterator<DocEntryMut<'a>> for Document {
         }
         doc
     }
-}
-
-/// Trait to convert a [DocEntry] into a custom struct.
-pub trait FromDocEntry: Sized {
-    fn from(entry: &DocEntry) -> Result<Self>;
 }

@@ -44,7 +44,7 @@ impl<R: io::Read> Reader<R> {
     /// An iterator of Results is returned.
     /// # Example
     /// ```no_run
-    /// use csvlib::{FromRow, Reader, Result, Row};
+    /// use csvlib::{Reader, Result, Row};
     ///
     /// pub struct Person {
     ///     pub name: String,
@@ -53,8 +53,9 @@ impl<R: io::Read> Reader<R> {
     ///     pub email: String,
     /// }
     ///
-    /// impl FromRow for Person {
-    ///     fn from(row: &Row) -> Result<Self> {
+    /// impl TryFrom<Row> for Person {
+    ///    type Error = csvlib::CsvError;
+    ///     fn try_from(row: Row) -> Result<Self> {
     ///         Ok(Person {
     ///             // Using column indices. Adjust indices to match your CSV header order.
     ///             name: row.get::<String>(0)?,
@@ -88,12 +89,12 @@ impl<R: io::Read> Reader<R> {
     ///
     ///     Ok(())
     /// }
-
-    pub fn entries_decoded<T>(self) -> impl Iterator<Item = Result<T>>
+    ///```
+    pub fn entries_decoded<'a, T>(self) -> impl Iterator<Item = Result<T>>
     where
-        T: FromRow,
+        T: TryFrom<Row, Error = CsvError>,
     {
-        self.entries().map(|row| T::from(&row))
+        self.entries().map(|row| T::try_from(row))
     }
 }
 

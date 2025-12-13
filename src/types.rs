@@ -432,10 +432,3 @@ impl From<CsvError> for String {
 }
 
 impl Error for CsvError {}
-
-/// Trait for types that can be created from a CSV [`Row`].
-pub trait FromRow {
-    fn from(row: &Row) -> Result<Self>
-    where
-        Self: Sized;
-}
