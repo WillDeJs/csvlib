@@ -90,7 +90,7 @@ impl<R: io::Read> Reader<R> {
     ///     Ok(())
     /// }
     ///```
-    pub fn entries_decoded<'a, T>(self) -> impl Iterator<Item = Result<T>>
+    pub fn entries_decoded<T>(self) -> impl Iterator<Item = Result<T>>
     where
         T: TryFrom<Row, Error = CsvError>,
     {

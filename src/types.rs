@@ -213,16 +213,22 @@ impl Row {
         if index >= self.ranges.len() {
             return;
         }
+        let (start, end) = self.ranges[index];
+        let new_value_bytes = new_field.to_string().into_bytes();
+        let new_length = new_value_bytes.len();
+        // replace existing value
+        let _ = self.inner.splice(start..end, new_value_bytes);
 
-        let mut row = Row::new();
-        for (i, field) in self.iter().enumerate() {
-            if i == index {
-                row.add(&new_field);
-                continue;
-            }
-            row.add_bytes(field.as_bytes());
+        // get the end of the entry we are modifying from inside row bytes
+        let mut next_start = 0;
+        // Update start and end for every other field in the row
+        self.ranges[index] = (start, start + new_length);
+        for range in self.ranges.iter_mut() {
+            let length = range.1 - range.0;
+            range.0 = next_start;
+            range.1 = next_start + length;
+            next_start += length;
         }
-        std::mem::swap(self, &mut row)
     }
 
     /// Attempts to retrieve and cast a field to a given type.
@@ -264,12 +270,7 @@ impl Row {
     /// Retrieves the raw string value of a field at the given index.
     /// Returns an empty string if the index is out of bounds or the field is not valid UTF-8.
     pub fn get_value(&self, index: usize) -> Option<String> {
-        match self.ranges.get(index) {
-            Some((start, end)) => {
-                Some(String::from_utf8_lossy(&self.inner[*start..*end]).to_string())
-            }
-            None => None,
-        }
+        self.ranges.get(index).map(|(start, end)| String::from_utf8_lossy(&self.inner[*start..*end]).to_string())
     }
     /// Retrieves the number of [`Field`]s in the row
     pub fn count(&self) -> usize {

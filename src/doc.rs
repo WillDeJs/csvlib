@@ -142,6 +142,60 @@ impl Document {
         self.rows.push(row.into());
     }
 
+    /// Add an empty column to this row.
+    /// # Arguments:
+    /// `column_name` the name of the column being added
+    pub fn add_empty_column(&mut self, column_name: &str) {
+        if !self.header_indexes.contains_key(column_name) {
+            if let Some(header) = self.headers.as_mut() {
+                let index = header.count();
+                header.add(column_name);
+                self.header_indexes.insert(column_name.to_owned(), index);
+            }
+        }
+    }
+
+    /// Add a column to this row. Use a producer function to determine the value being used in the column.
+    ///
+    /// # Arguments:
+    /// `column_name` the name of the column being added
+    /// `producer` function to be called on each of the rows to generate the desired value.
+    ///
+    pub fn add_column_with<T, F>(&mut self, column_name: &str, mut producer: F)
+    where
+        T: Display,
+        F: FnMut() -> T,
+    {
+        if !self.header_indexes.contains_key(column_name) {
+            if let Some(header) = self.headers.as_mut() {
+                let index = header.count();
+                header.add(column_name);
+                self.header_indexes.insert(column_name.to_owned(), index);
+                for row in &mut self.rows {
+                    row.add(producer())
+                }
+            }
+        }
+    }
+    /// Remove a column with with a given name from this document if it exists.
+    /// # Arguments
+    /// `column_name` name of the column being removed
+    pub fn remove_column(&mut self, column_name: &str) {
+        if let Some(index) = self.header_indexes.get(column_name) {
+            for row in &mut self.rows {
+                row.remove(*index);
+            }
+
+            if let Some(row) = self.headers.as_mut() {
+                row.remove(*index);
+                self.header_indexes = HashMap::new(); // re-calculate indexes
+                for (index, value) in row.iter().enumerate() {
+                    self.header_indexes.insert(value.to_string(), index);
+                }
+            }
+        }
+    }
+
     /// Inserts multiple rows to the document.
     ///
     /// # Arguments
@@ -343,11 +397,7 @@ impl Document {
 
     /// Get the header row of the document.
     pub fn get_header_names(&self) -> Option<Vec<String>> {
-        if let Some(headers) = &self.headers {
-            Some(headers.into())
-        } else {
-            None
-        }
+        self.headers.as_ref().map(|headers| headers.into())
     }
 
     /// Get an iterator to all the rows in the document
@@ -727,7 +777,7 @@ impl<'a> Index<&str> for DocEntryMut<'a> {
         if let Some(col_index) = self.header_indexes.get(col_name) {
             // Assuming Row implements Index<usize, Output = String>
             // and we want to return &str
-            &self.row.index(*col_index)
+            self.row.index(*col_index)
         } else {
             panic!("Invalid column name: {}", col_name);
         }
@@ -740,7 +790,7 @@ impl<'a> Index<&str> for DocEntry<'a> {
         if let Some(col_index) = self.header_indexes.get(col_name) {
             // Assuming Row implements Index<usize, Output = String>
             // and we want to return &str
-            &self.row.index(*col_index)
+            self.row.index(*col_index)
         } else {
             panic!("Invalid column name: {}", col_name);
         }
