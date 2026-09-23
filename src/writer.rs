@@ -87,61 +87,50 @@ impl<R: io::Write + Sized> Writer<R> {
         self
     }
 
+    /// Consume the writer and return the underlying output stream.
+    pub fn into_inner(self) -> Result<R> {
+        self.writer
+            .into_inner()
+            .map_err(|error| CsvError::IOError(error.to_string()))
+    }
+
     /// Writes a single CSV [`row`]
     ///
     /// # Arguments:
     /// `row` CSV row to be written.
     pub fn write(&mut self, row: &Row) -> Result<()> {
-        let mut temp_utf8_buf: [u8; 4] = [0; 4];
         let delimiter = match self.delimiter {
             Some(delim) => delim,
             _ => row.delim,
         };
+        let mut delimiter_bytes = [0; 4];
+        let delimiter_bytes = delimiter.encode_utf8(&mut delimiter_bytes).as_bytes();
 
-        // Since we now write behind a buffered writer, we can write single characters without much penalty
-        // May not be pretty but it helps a lot in performance
         for (index, (start, end)) in row.ranges.iter().enumerate() {
-            // To avoid slow allocation and string formatting, we escape fields manually
             let field = &row.inner[*start..*end];
+            let needs_quotes = field.contains(&QUOTE_BYTE)
+                || field
+                    .windows(delimiter_bytes.len())
+                    .any(|window| window == delimiter_bytes)
+                || field.contains(&b'\r')
+                || field.contains(&b'\n');
 
-            // Note: Not the most efficient way to handle UTF-8 characters.
-            // Using a Vec<u8> for the fields means we must build a string from them manually.
-            // However, it was a design decision that allowed less allocations and faster performance while parsing.
-            // It does not come for free, we now check for delimiters and quotes on every character when writing to a file.
-            if field.utf8_chunks().any(|c| c.valid().contains(QUOTE)) {
-                // When we have quotes, we escape each quote and put quotes around the field itself
+            if needs_quotes {
                 self.writer.write_all(&[QUOTE_BYTE])?;
-                for chunk in field.utf8_chunks() {
-                    for current_char in chunk.valid().chars() {
-                        if current_char == QUOTE {
-                            self.writer.write_all(&[QUOTE_BYTE])?;
-                            self.writer.write_all(&[QUOTE_BYTE])?;
-                        } else {
-                            // single UTF-8 character
-                            if current_char.len_utf8() == 1 {
-                                self.writer.write_all(&[current_char as u8])?;
-                            } else {
-                                // multiple UTF-8 characters
-                                current_char.encode_utf8(&mut temp_utf8_buf);
-                                self.writer
-                                    .write_all(&temp_utf8_buf[0..current_char.len_utf8()])?;
-                            }
-                        }
+                for byte in field {
+                    if *byte == QUOTE_BYTE {
+                        self.writer.write_all(&[QUOTE_BYTE, QUOTE_BYTE])?;
+                    } else {
+                        self.writer.write_all(std::slice::from_ref(byte))?;
                     }
                 }
-                self.writer.write_all(&[QUOTE_BYTE])?;
-            } else if field.utf8_chunks().any(|c| c.valid().contains(delimiter)) {
-                // If the delimiter is part of the field, then let's escape the field
-                self.writer.write_all(&[QUOTE_BYTE])?;
-                self.writer.write_all(field)?;
                 self.writer.write_all(&[QUOTE_BYTE])?;
             } else {
                 self.writer.write_all(field)?;
             }
 
             if index != row.ranges.len() - 1 {
-                // We only add the delimiter at the end of the each field except for the last
-                self.writer.write_all(&[delimiter as u8])?;
+                self.writer.write_all(delimiter_bytes)?;
             }
         }
         self.writer.write_all(&NEW_LINE)?;

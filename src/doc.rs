@@ -138,8 +138,31 @@ impl Document {
     where
         T: Into<Row>,
     {
-        // TODO: Validate row length
-        self.rows.push(row.into());
+        let _ = self.try_insert(row);
+    }
+
+    /// Inserts a new row to the document and reports schema mismatches.
+    pub fn try_insert<T>(&mut self, row: T) -> Result<()>
+    where
+        T: Into<Row>,
+    {
+        let row = row.into();
+        if let Some(header) = &self.headers {
+            if row.count() != header.count() {
+                return Err(CsvError::HeaderMismatch);
+            }
+        } else if row.count() == 0 {
+            return Err(CsvError::HeaderMismatch);
+        } else {
+            self.headers = Some(Row::new());
+            self.header_indexes = HashMap::new();
+            for index in 0..row.count() {
+                self.header_indexes.insert(index.to_string(), index);
+            }
+        }
+
+        self.rows.push(row);
+        Ok(())
     }
 
     /// Add an empty column to this row.
@@ -201,15 +224,48 @@ impl Document {
     /// # Arguments
     /// `row` Row being inserted.
     pub fn insert_all(&mut self, rows: &[Row]) {
-        self.rows.extend_from_slice(rows);
+        let _ = self.try_insert_all(rows);
+    }
+
+    /// Inserts multiple rows and fails fast on the first schema mismatch.
+    pub fn try_insert_all(&mut self, rows: &[Row]) -> Result<()> {
+        let mut validated = Vec::with_capacity(rows.len());
+        let header_count = self.headers.as_ref().map(|h| h.count());
+
+        for row in rows {
+            if let Some(expected) = header_count {
+                if row.count() != expected {
+                    return Err(CsvError::HeaderMismatch);
+                }
+            } else if row.count() == 0 {
+                return Err(CsvError::HeaderMismatch);
+            } else if self.headers.is_none() {
+                self.headers = Some(Row::new());
+                self.header_indexes = HashMap::new();
+                for index in 0..row.count() {
+                    self.header_indexes.insert(index.to_string(), index);
+                }
+            }
+            validated.push(row.clone());
+        }
+
+        self.rows.extend(validated);
+        Ok(())
     }
 
     /// Append another document.
     ///
     /// # Arguments
     /// `doc` Document being appended.
-    pub fn append(&mut self, doc: &Document) {
+    pub fn append(&mut self, doc: &Document) -> Result<()> {
+        if self.headers != doc.headers {
+            return Err(CsvError::HeaderMismatch);
+        }
+        if self.header_indexes != doc.header_indexes {
+            return Err(CsvError::HeaderMismatch);
+        }
         self.insert_all(&doc.rows);
+        Ok(())
     }
 
     /// Remove an existing row from a document.

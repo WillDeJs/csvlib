@@ -1,4 +1,4 @@
-use csvlib::{reader::Reader, Document, Row};
+use csvlib::{reader::Reader, Document, Row, Writer};
 
 #[test]
 fn test_well_formed_csv_no_commas_no_quotes() {
@@ -135,4 +135,112 @@ fn test_csv_doc_remove_row() {
     assert_eq!(doc.get::<i32>(0, "header1"), Ok(11));
     assert_eq!(doc.get::<i32>(1, "header1"), Ok(31));
     assert_eq!(doc.count(), 2);
+}
+
+#[test]
+fn test_csv_row_display_serializes_fields_with_commas_and_quotes() {
+    let row = Row::from(&["alpha,beta", "say \"hi\"", "zeta"][..]);
+    let output = row.to_string();
+    assert_eq!(output, r#""alpha,beta","say ""hi""",zeta"#);
+}
+
+#[test]
+fn test_csv_row_display_writes_delimiter_only_once() {
+    let row = Row::from(&["one", "two,three"][..]);
+    assert_eq!(row.to_string(), "one,\"two,three\"");
+}
+
+#[test]
+fn test_writer_quotes_line_breaks_and_escaped_quotes() {
+    let row = Row::from(&["first line\nsecond line", "say \"hi\""][..]);
+    let mut writer = Writer::from_writer(Vec::new());
+
+    writer.write(&row).unwrap();
+
+    assert_eq!(
+        writer.into_inner().unwrap(),
+        b"\"first line\nsecond line\",\"say \"\"hi\"\"\"\r\n"
+    );
+}
+
+#[test]
+fn test_writer_preserves_unicode_delimiter() {
+    let row = Row::from(&["alpha", "beta¦gamma"][..]);
+    let mut writer = Writer::from_writer(Vec::new()).with_delimiter('¦');
+
+    writer.write(&row).unwrap();
+
+    assert_eq!(
+        writer.into_inner().unwrap(),
+        "alpha¦\"beta¦gamma\"\r\n".as_bytes()
+    );
+}
+
+#[test]
+fn test_document_try_insert_rejects_mismatched_row_width() {
+    let mut doc = Document::with_headers(&["name", "age"]);
+
+    assert!(doc.try_insert(Row::from(&["alice"][..])).is_err());
+    assert_eq!(doc.count(), 0);
+
+    assert!(doc.try_insert(Row::from(&["alice", "30"][..])).is_ok());
+    assert_eq!(doc.count(), 1);
+}
+
+#[test]
+fn test_document_try_insert_all_rejects_mismatched_rows() {
+    let mut doc = Document::with_headers(&["name", "age"]);
+    let rows = vec![
+        Row::from(&["alice", "30"][..]),
+        Row::from(&["bob"][..]),
+        Row::from(&["charlie", "40"][..]),
+    ];
+
+    assert!(doc.try_insert_all(&rows).is_err());
+    assert_eq!(doc.count(), 0);
+}
+
+#[test]
+fn test_reader_parses_quoted_fields_with_commas_and_escaped_quotes() {
+    let data = "name,notes,city\n\"alpha,beta\",\"say \"\"hi\"\"\",zeta\n";
+    let reader = Reader::builder()
+        .with_reader(std::io::Cursor::new(data))
+        .with_header(true)
+        .build()
+        .expect("reader should parse quoted CSV");
+
+    let rows: Vec<_> = reader.entries().collect();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].count(), 3);
+    assert_eq!(rows[0].get::<String>(0).unwrap(), "alpha,beta");
+    assert_eq!(rows[0].get::<String>(1).unwrap(), "say \"hi\"");
+    assert_eq!(rows[0].get::<String>(2).unwrap(), "zeta");
+}
+
+#[test]
+fn test_reader_parses_multiline_quoted_fields() {
+    let data = "name,notes\n\"alice\",\"first line\nsecond line\"\n";
+    let reader = Reader::builder()
+        .with_reader(std::io::Cursor::new(data))
+        .with_header(true)
+        .build()
+        .expect("reader should parse multiline quoted fields");
+
+    let rows: Vec<_> = reader.entries().collect();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].count(), 2);
+    assert_eq!(rows[0].get::<String>(1).unwrap(), "first line\nsecond line");
+}
+
+#[test]
+fn test_reader_rejects_unterminated_quoted_field() {
+    let data = "name,notes\n\"alice\",\"unterminated\n";
+    let reader = Reader::builder()
+        .with_reader(std::io::Cursor::new(data))
+        .with_header(true)
+        .build()
+        .expect("reader should allow creation even with bad input");
+
+    let rows: Vec<_> = reader.entries().collect();
+    assert!(rows.is_empty());
 }

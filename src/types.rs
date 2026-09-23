@@ -270,7 +270,9 @@ impl Row {
     /// Retrieves the raw string value of a field at the given index.
     /// Returns an empty string if the index is out of bounds or the field is not valid UTF-8.
     pub fn get_value(&self, index: usize) -> Option<String> {
-        self.ranges.get(index).map(|(start, end)| String::from_utf8_lossy(&self.inner[*start..*end]).to_string())
+        self.ranges
+            .get(index)
+            .map(|(start, end)| String::from_utf8_lossy(&self.inner[*start..*end]).to_string())
     }
     /// Retrieves the number of [`Field`]s in the row
     pub fn count(&self) -> usize {
@@ -315,19 +317,16 @@ impl std::fmt::Display for Row {
         let last_index = self.ranges.len().saturating_sub(1);
         for (index, field) in self.iter().enumerate() {
             let field_value = field.to_string();
-
-            // escape every single quote. This assumes what's present in each field
-            // is what the user wants in it, no need for the user to escape things for us
-            let field_value = field_value.replace('\"', "\"\"");
-
-            // If we have quotes or commas, then we need outer double quotes in this field
-            if field_value.contains(self.delim) || field_value.contains(QUOTE) {
-                write!(f, "\"{field_value}\"")?;
-            }
-            if index != last_index {
-                write!(f, "{}{}", field_value, self.delim)?;
+            let escaped = field_value.replace('"', "\"\"");
+            let rendered = if escaped.contains(self.delim) || escaped.contains(QUOTE) {
+                format!("\"{escaped}\"")
             } else {
-                write!(f, "{}", &field_value)?;
+                escaped
+            };
+
+            write!(f, "{rendered}")?;
+            if index != last_index {
+                write!(f, "{}", self.delim)?;
             }
         }
         Ok(())
@@ -384,6 +383,7 @@ pub enum CsvError {
     InvalidRow(usize),
     InvalidColumnIndex(usize),
     Generic(String),
+    HeaderMismatch,
 }
 
 impl Display for CsvError {
@@ -416,6 +416,7 @@ impl Display for CsvError {
                 write!(f, "Invalid Row: `{row}`. Not found in document.")
             }
             CsvError::Generic(msg) => write!(f, "{msg}"),
+            CsvError::HeaderMismatch => write!(f, "Header mismatch between documents."),
         }
     }
 }

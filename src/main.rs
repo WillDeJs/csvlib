@@ -1,4 +1,4 @@
-use csvlib::{Reader, Result, Row};
+use csvlib::{Document, Result, Row};
 
 pub struct Person {
     pub name: String,
@@ -22,24 +22,16 @@ impl TryFrom<Row> for Person {
 
 fn main() -> Result<()> {
     // Use the low-level Reader which yields `Row`s (the "Rows" iterator)
-    let reader = Reader::from_path("people.csv")?;
+    let mut doc = Document::from_path("large_user_data.csv").expect("Could not open file");
 
-    let mut total_age: u32 = 0;
-    let mut count: u32 = 0;
+    doc.remove_column("Age");
+    doc.write_to_file("no_age_mail_list.csv")?;
+    let mut value = 0;
+    doc.add_column_with("sortno", move || {
+        value += 1;
+        value
+    });
 
-    for person_res in reader.entries_decoded::<Person>() {
-        let person = person_res?;
-        total_age += person.age;
-        count += 1;
-    }
-
-    if count == 0 {
-        println!("No people found");
-        return Ok(());
-    }
-
-    let average_age = total_age as f32 / count as f32;
-    println!("Average age: {}", average_age);
-
+    doc.write_to_file("with_sortno.csv")?;
     Ok(())
 }

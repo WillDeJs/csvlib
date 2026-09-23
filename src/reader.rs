@@ -128,12 +128,7 @@ impl Reader<std::fs::File> {
         let file = std::fs::File::open(path)
             .map_err(|e| CsvError::FileAccessError(file_name, e.to_string()))?;
         let mut reader = BufReader::new(file);
-        let header = read_fields(
-            &mut reader,
-            DEFAULT_DELIM,
-            &mut Vec::with_capacity(100),
-            &mut String::with_capacity(100),
-        )?;
+        let header = read_fields(&mut reader, DEFAULT_DELIM, &mut String::with_capacity(100))?;
 
         Ok(Reader {
             reader,
@@ -150,12 +145,7 @@ impl FromStr for Reader<std::io::Cursor<String>> {
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         let cursor = std::io::Cursor::new(s.to_owned());
         let mut reader = BufReader::new(cursor);
-        let header = read_fields(
-            &mut reader,
-            DEFAULT_DELIM,
-            &mut Vec::with_capacity(100),
-            &mut String::with_capacity(100),
-        )?;
+        let header = read_fields(&mut reader, DEFAULT_DELIM, &mut String::with_capacity(100))?;
 
         Ok(Reader {
             reader,
@@ -223,7 +213,6 @@ where
                     self.header = Some(read_fields(
                         &mut reader,
                         delimiter,
-                        &mut Vec::with_capacity(100),
                         &mut String::with_capacity(100),
                     )?);
                 }
@@ -289,15 +278,12 @@ where
     owner: Reader<R>,
 
     line_buffer: String,
-
-    field_buffer: Vec<u8>,
 }
 impl<R: io::Read> Entries<R> {
     fn new(owner: Reader<R>) -> Self {
         Self {
             owner,
             line_buffer: String::with_capacity(100),
-            field_buffer: Vec::with_capacity(100),
         }
     }
 }
@@ -310,13 +296,7 @@ impl<R: io::Read> Iterator for Entries<R> {
             Some(delim) => delim,
             _ => DEFAULT_DELIM,
         };
-        read_fields(
-            &mut self.owner.reader,
-            delimiter,
-            &mut self.field_buffer,
-            &mut self.line_buffer,
-        )
-        .ok()
+        read_fields(&mut self.owner.reader, delimiter, &mut self.line_buffer).ok()
     }
 }
 
@@ -329,80 +309,77 @@ impl<R: io::Read> Iterator for Entries<R> {
 fn read_fields(
     reader: &mut impl io::BufRead,
     separator: char,
-    field_buffer: &mut Vec<u8>,
     line_buffer: &mut String,
 ) -> Result<Row> {
     let mut row = Row::with_capacity(line_buffer.capacity());
-    let mut quote_first_char = false;
-    let mut multi_line = true;
-    let mut current_char: char = ' ';
+    let mut field = String::new();
+    let mut in_quotes = false;
 
-    while multi_line {
-        multi_line = false;
+    loop {
         line_buffer.clear();
         match reader.read_line(line_buffer) {
-            Ok(0) => return Err(CsvError::RecordError(line_buffer.to_string())),
-            Ok(_n) => {
-                let mut escaping = false;
+            Ok(0) => {
+                if in_quotes {
+                    return Err(CsvError::RecordError(
+                        "Unterminated quoted field".to_string(),
+                    ));
+                }
 
-                field_buffer.clear();
-                let mut quote_count = 0;
-                for c in line_buffer.chars() {
-                    current_char = c;
-                    if current_char == QUOTE {
-                        quote_count += 1;
-                        if field_buffer.is_empty() {
-                            quote_first_char = true;
-                        }
-                    }
-
-                    if current_char == QUOTE && quote_first_char {
-                        if quote_count == 1 {
-                            escaping = true;
-                            continue;
-                        } else if quote_count > 1 && quote_count % 2 == 0 {
-                            escaping = false;
-                            continue;
-                        }
-                    } else if current_char == separator {
-                        if !escaping {
-                            quote_first_char = false;
-                            row.add_bytes(field_buffer);
-                            field_buffer.clear();
-                            quote_count = 0;
-                            continue;
-                        }
-                    } else if current_char == CR {
-                        continue;
-                    } else if current_char == LF {
-                        if !escaping {
-                            row.add_bytes(field_buffer);
-                            field_buffer.clear();
-                            return Ok(row);
-                        } else {
-                            multi_line = true;
-                        }
-                    }
-                    if current_char.len_utf8() == 1 {
-                        field_buffer.push(current_char as u8);
-                    } else {
-                        let mut temp_utf8_buf: [u8; 4] = [0; 4];
-                        current_char.encode_utf8(&mut temp_utf8_buf);
-
-                        field_buffer.extend_from_slice(&temp_utf8_buf[0..current_char.len_utf8()]);
+                if !field.is_empty() || row.count() > 0 {
+                    row.add_bytes(field.as_bytes());
+                    field.clear();
+                    if row.count() > 0 {
+                        return Ok(row);
                     }
                 }
 
-                // got to the end and but did not find  a carriage return
-                if !field_buffer.is_empty() || current_char == separator {
-                    row.add_bytes(field_buffer);
-                    field_buffer.clear();
+                return Err(CsvError::RecordError(line_buffer.to_string()));
+            }
+            Ok(_) => {
+                let mut chars = line_buffer.chars().peekable();
+                while let Some(ch) = chars.next() {
+                    match ch {
+                        '"' if in_quotes => {
+                            if chars.peek() == Some(&'"') {
+                                field.push('"');
+                                chars.next();
+                            } else {
+                                in_quotes = false;
+                            }
+                        }
+                        '"' => {
+                            if field.is_empty() {
+                                in_quotes = true;
+                            } else {
+                                field.push(ch);
+                            }
+                        }
+                        c if c == separator && !in_quotes => {
+                            row.add_bytes(field.as_bytes());
+                            field.clear();
+                        }
+                        CR if !in_quotes => {
+                            if chars.peek() == Some(&LF) {
+                                chars.next();
+                            }
+                            row.add_bytes(field.as_bytes());
+                            field.clear();
+                            return Ok(row);
+                        }
+                        LF if !in_quotes => {
+                            row.add_bytes(field.as_bytes());
+                            field.clear();
+                            return Ok(row);
+                        }
+                        _ => field.push(ch),
+                    }
+                }
+
+                if in_quotes {
+                    continue;
                 }
             }
-
             Err(e) => return Err(CsvError::ReadError(e.to_string())),
         }
     }
-
-    Ok(row)
 }
