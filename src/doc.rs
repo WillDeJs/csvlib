@@ -169,13 +169,7 @@ impl Document {
     /// # Arguments:
     /// `column_name` the name of the column being added
     pub fn add_empty_column(&mut self, column_name: &str) {
-        if !self.header_indexes.contains_key(column_name) {
-            if let Some(header) = self.headers.as_mut() {
-                let index = header.count();
-                header.add(column_name);
-                self.header_indexes.insert(column_name.to_owned(), index);
-            }
-        }
+        self.add_column_with(column_name, || "");
     }
 
     /// Add a column to this row. Use a producer function to determine the value being used in the column.
